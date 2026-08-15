@@ -1,0 +1,10 @@
+{
+  "name": "OctoMinds Operations Platform",
+  "short_name": "OctoMinds",
+  "description": "A multi-branch operations platform for preschool and daycare teams.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8fa",
+  "theme_color": "#17324d",
+  "icons": []
+}

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17324d" />
+    <meta name="description" content="OctoMinds multi-branch operations platform" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>OctoMinds | Operations Platform</title>
+  </head>
+  <body>
+    <main id="authView" class="auth-shell">
+      <section class="auth-story">
+        <a class="brand brand-light" href="#" aria-label="OctoMinds home">
+          <span class="brand-mark" aria-hidden="true">O</span>
+          <span>OctoMinds</span>
+        </a>
+        <div class="story-copy">
+          <span class="eyebrow">ONE PLATFORM. EVERY BRANCH.</span>
+          <h1>Make every school day easier to run.</h1>
+          <p>Admissions, classrooms, parents, fees, inventory, and daycare—connected in one calm workspace.</p>
+        </div>
+        <div class="story-proof">
+          <div class="avatars" aria-hidden="true"><span>AS</span><span>NP</span><span>RK</span></div>
+          <p><strong>Built for the whole team</strong><br />Management, branch admins, teachers, counsellors, accountants, and parents.</p>
+        </div>
+      </section>
+
+      <section class="auth-panel">
+        <div class="auth-card">
+          <div class="mobile-brand">
+            <span class="brand-mark" aria-hidden="true">O</span>
+            <strong>OctoMinds</strong>
+          </div>
+          <span class="pill">SECURE STAFF ACCESS</span>
+          <h2>Welcome back</h2>
+          <p class="muted">Sign in to continue to your OctoMinds workspace.</p>
+          <form id="loginForm">
+            <div id="configurationNotice" class="configuration-notice hidden"><strong>Setup required</strong><span>Connect the approved Supabase and API environments before staff can sign in.</span></div>
+            <div id="phoneStage">
+              <label>Mobile number
+                <span class="phone-wrap"><span>+91</span><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="10" pattern="[6-9][0-9]{9}" placeholder="10-digit mobile number" required /></span>
+              </label>
+            </div>
+            <div id="otpStage" class="hidden">
+              <label>One-time password<input id="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="Enter 6-digit OTP" /></label>
+              <p class="otp-help">OTP sent to <strong id="otpPhone"></strong>. <button id="changePhone" type="button" class="text-button">Change number</button></p>
+            </div>
+            <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" checked /> Keep me signed in</label><button class="text-button hidden" id="resendOtp" type="button">Resend OTP</button></div>
+            <button id="authSubmit" class="primary-button full" type="submit">Send OTP <span>→</span></button>
+          </form>
+          <p class="access-note"><span></span> Access is available only to accounts created by an OctoMinds administrator.</p>
+        </div>
+        <p class="auth-footer">Protected workspace · Role-based access · Activity logging</p>
+      </section>
+    </main>
+
+    <main id="appView" class="app-shell hidden">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-head">
+          <a class="brand brand-light" href="#"><span class="brand-mark">O</span><span>OctoMinds</span></a>
+          <button id="closeNav" class="icon-button mobile-only" aria-label="Close navigation">×</button>
+        </div>
+        <nav aria-label="Primary navigation">
+          <p class="nav-label">WORKSPACE</p>
+          <a class="nav-item active" href="#overview" data-view="Overview"><span>⌂</span>Overview</a>
+          <a class="nav-item" href="#admissions" data-view="Admissions"><span>◎</span>Admissions <em>12</em></a>
+          <a class="nav-item" href="#students" data-view="Students"><span>♙</span>Students</a>
+          <a class="nav-item" href="#academics" data-view="Academics"><span>▤</span>Academics</a>
+          <a class="nav-item" href="#attendance" data-view="Attendance"><span>✓</span>Attendance</a>
+          <p class="nav-label">OPERATIONS</p>
+          <a class="nav-item" href="#staff" data-view="Branches & staff"><span>◇</span>Branches & staff</a>
+          <a class="nav-item" href="#fees" data-view="Fees"><span>₹</span>Fees</a>
+          <a class="nav-item" href="#inventory" data-view="Inventory"><span>□</span>Inventory</a>
+          <a class="nav-item" href="#reports" data-view="Reports"><span>↗</span>Reports</a>
+        </nav>
+        <div class="sidebar-help"><span>?</span><div><strong>Need help?</strong><small>View setup guide</small></div></div>
+        <button id="logoutButton" class="logout-button"><span>↪</span> Sign out</button>
+      </aside>
+      <div id="scrim" class="scrim"></div>
+
+      <section class="workspace">
+        <header class="topbar">
+          <button id="openNav" class="icon-button mobile-only" aria-label="Open navigation">☰</button>
+          <div class="branch-control"><span>Viewing</span><button id="branchButton">— <b>⌄</b></button></div>
+          <div class="topbar-actions">
+            <button id="searchButton" class="icon-button" aria-label="Search">⌕</button>
+            <button id="notificationButton" class="icon-button notification-button" aria-label="Notifications">♢<span></span></button>
+            <button id="profileButton" class="profile-button"><span class="avatar">—</span><span class="profile-copy"><strong>Signed-in user</strong><small>Loading access…</small></span><b>⌄</b></button>
+          </div>
+        </header>
+
+        <div class="page-content">
+          <section class="welcome-row">
+            <div><p id="todayLabel" class="date-line">TODAY</p><h1 id="pageTitle">Your OctoMinds workspace</h1><p class="muted">Your authorized branch and operational data appear here.</p></div>
+            <div class="welcome-actions"><button id="exportButton" class="secondary-button">⇩ Export</button></div>
+          </section>
+
+          <section class="status-strip" aria-label="Daily status">
+            <div><span class="status-icon coral">♙</span><p><strong id="studentCount">—</strong><small>Active students</small></p><span class="trend neutral">No records yet</span></div>
+            <div><span class="status-icon teal">✓</span><p><strong id="attendanceRate">—</strong><small>Attendance today</small></p><span class="trend neutral">No records yet</span></div>
+            <div><span class="status-icon gold">◎</span><p><strong id="enquiryCount">—</strong><small>Open enquiries</small></p><span class="trend neutral">No records yet</span></div>
+            <div><span class="status-icon blue">₹</span><p><strong id="feeCollection">—</strong><small>Fees collected</small></p><span class="trend neutral">No records yet</span></div>
+          </section>
+
+          <section class="dashboard-grid">
+            <article class="card schedule-card">
+              <div class="card-head"><div><p class="section-kicker">PLATFORM STATUS</p><h2>Phase 1 foundation</h2></div><span class="tag teal-soft">ACTIVE</span></div>
+              <div class="foundation-list">
+                <div><span>✓</span><p><strong>Secure authentication</strong><small>Supabase identity with server-side token verification</small></p></div>
+                <div><span>✓</span><p><strong>Role and branch access</strong><small>Membership-controlled permissions for every user</small></p></div>
+                <div><span>✓</span><p><strong>Protected application shell</strong><small>Authenticated navigation, profile, and session controls</small></p></div>
+                <div><span>✓</span><p><strong>Operational readiness</strong><small>Logging, health checks, PWA shell, and deployment configuration</small></p></div>
+              </div>
+            </article>
+
+            <article class="card actions-card">
+              <div class="card-head"><div><p class="section-kicker">ACCOUNT</p><h2>Your access</h2></div><span class="count-badge">✓</span></div>
+              <div class="access-details">
+                <div><span>Role</span><strong id="sessionRole">Loading…</strong></div>
+                <div><span>Branch</span><strong id="sessionBranch">Loading…</strong></div>
+                <div><span>Mobile</span><strong id="sessionEmail">Loading…</strong></div>
+                <div><span>Session</span><strong class="good">Verified</strong></div>
+              </div>
+            </article>
+
+            <article class="card admissions-card empty-card">
+              <div class="card-head"><div><p class="section-kicker">OPERATIONS</p><h2>Dashboard data</h2></div></div>
+              <div class="empty-state"><span>▦</span><strong>No operational records yet</strong><p>Dashboard metrics will populate from the live modules as admissions, students, attendance, fees, and inventory are released.</p></div>
+            </article>
+
+            <article class="card branch-card">
+              <div class="card-head"><div><p class="section-kicker">SYSTEM</p><h2>Environment health</h2></div><button id="refreshHealth" class="text-button">Refresh</button></div>
+              <div class="health-list"><div><span>Web application</span><strong class="good">Available</strong></div><div><span>API service</span><strong id="apiHealth">Checking…</strong></div><div><span>Authentication</span><strong id="authHealth">Checking…</strong></div><div><span>Data access</span><strong id="dataHealth">Checking…</strong></div></div>
+            </article>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <aside id="profileDrawer" class="drawer" aria-hidden="true">
+      <div class="drawer-head"><h2>Your profile</h2><button id="closeDrawer" class="icon-button" aria-label="Close profile">×</button></div>
+      <div class="profile-hero"><span id="drawerAvatar" class="avatar large">—</span><div><strong id="drawerName">Signed-in user</strong><small id="drawerRole">Loading access…</small></div></div>
+      <dl><div><dt>Branch</dt><dd id="drawerBranch">—</dd></div><div><dt>Mobile</dt><dd id="drawerEmail">—</dd></div><div><dt>Access</dt><dd id="drawerAccess">—</dd></div><div><dt>Session</dt><dd>Verified</dd></div></dl>
+      <button class="secondary-button full">Manage profile</button>
+    </aside>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/config.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

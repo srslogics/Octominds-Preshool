@@ -6,53 +6,56 @@
     <meta name="theme-color" content="#17324d" />
     <meta name="description" content="OctoMinds multi-branch operations platform" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=pin-v1" />
     <title>OctoMinds | Operations Platform</title>
   </head>
   <body>
     <main id="authView" class="auth-shell">
       <section class="auth-story">
+        <div class="story-orb orb-one"></div><div class="story-orb orb-two"></div>
         <a class="brand brand-light" href="#" aria-label="OctoMinds home">
-          <span class="brand-mark" aria-hidden="true">O</span>
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <span>OctoMinds</span>
         </a>
         <div class="story-copy">
-          <span class="eyebrow">ONE PLATFORM. EVERY BRANCH.</span>
-          <h1>Make every school day easier to run.</h1>
-          <p>Admissions, classrooms, parents, fees, inventory, and daycare—connected in one calm workspace.</p>
+          <span class="eyebrow">PRESCHOOL OPERATIONS, BEAUTIFULLY CONNECTED</span>
+          <h1>More time for children.<br /><em>Less time on admin.</em></h1>
+          <p>One secure workspace for every branch, every classroom, and every family you support.</p>
+          <div class="story-features" aria-label="Platform highlights">
+            <span><b>✓</b> Multi-branch control</span><span><b>✓</b> Parent connection</span><span><b>✓</b> Live operations</span>
+          </div>
         </div>
         <div class="story-proof">
-          <div class="avatars" aria-hidden="true"><span>AS</span><span>NP</span><span>RK</span></div>
-          <p><strong>Built for the whole team</strong><br />Management, branch admins, teachers, counsellors, accountants, and parents.</p>
+          <div class="proof-mark" aria-hidden="true">08</div>
+          <p><strong>Everything in one place</strong><br />Admissions, students, attendance, fees, inventory, daycare, and communication.</p>
         </div>
       </section>
 
       <section class="auth-panel">
         <div class="auth-card">
           <div class="mobile-brand">
-            <span class="brand-mark" aria-hidden="true">O</span>
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
             <strong>OctoMinds</strong>
           </div>
-          <span class="pill">SECURE STAFF ACCESS</span>
-          <h2>Welcome back</h2>
-          <p class="muted">Sign in to continue to your OctoMinds workspace.</p>
+          <span class="pill"><i></i> SECURE WORKSPACE</span>
+          <h2>Welcome back<span>.</span></h2>
+          <p class="muted">Use your registered mobile number and secure PIN to access your workspace.</p>
           <form id="loginForm">
             <div id="configurationNotice" class="configuration-notice hidden"><strong>Setup required</strong><span>Connect the approved Supabase and API environments before staff can sign in.</span></div>
-            <div id="phoneStage">
+            <div id="phoneStage" class="credential-fields">
               <label>Mobile number
                 <span class="phone-wrap"><span>+91</span><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="10" pattern="[6-9][0-9]{9}" placeholder="10-digit mobile number" required /></span>
               </label>
+              <label>6-digit PIN
+                <span class="pin-wrap"><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="6" pattern="[0-9]{6}" placeholder="Enter your PIN" required /><button id="togglePin" type="button" aria-label="Show PIN">Show</button></span>
+              </label>
             </div>
-            <div id="otpStage" class="hidden">
-              <label>One-time password<input id="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="Enter 6-digit OTP" /></label>
-              <p class="otp-help">OTP sent to <strong id="otpPhone"></strong>. <button id="changePhone" type="button" class="text-button">Change number</button></p>
-            </div>
-            <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" checked /> Keep me signed in</label><button class="text-button hidden" id="resendOtp" type="button">Resend OTP</button></div>
-            <button id="authSubmit" class="primary-button full" type="submit">Send OTP <span>→</span></button>
+            <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" checked /> Keep me signed in</label><button class="text-button" id="forgotPin" type="button">Forgot PIN?</button></div>
+            <button id="authSubmit" class="primary-button full" type="submit">Continue securely <span>→</span></button>
           </form>
-          <p class="access-note"><span></span> Access is available only to accounts created by an OctoMinds administrator.</p>
+          <p class="access-note"><span>✓</span> Access is limited to approved OctoMinds accounts.</p>
         </div>
-        <p class="auth-footer">Protected workspace · Role-based access · Activity logging</p>
+        <div class="auth-footer"><span>Protected workspace</span><span>Role-based access</span><span>Activity logging</span></div>
       </section>
     </main>
 
@@ -147,6 +150,6 @@
     </aside>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=pin-v1"></script>
   </body>
 </html>

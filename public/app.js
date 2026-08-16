@@ -7,8 +7,6 @@ const toast = $('#toast');
 const SESSION_KEY = 'octominds.auth.session';
 let session = null;
 let toastTimer;
-let authStage = 'phone';
-let pendingPhone = '';
 
 function configured() {
   return Boolean(config.supabaseUrl && config.supabaseAnonKey && config.apiBaseUrl);
@@ -25,7 +23,7 @@ function showToast(message, kind = 'info') {
 function setAuthBusy(busy) {
   const button = $('#loginForm [type="submit"]');
   button.disabled = busy;
-  button.innerHTML = busy ? (authStage === 'phone' ? 'Sending OTP…' : 'Verifying…') : (authStage === 'phone' ? 'Send OTP <span>→</span>' : 'Verify and sign in <span>→</span>');
+  button.innerHTML = busy ? 'Signing in…' : 'Continue securely <span>→</span>';
 }
 
 async function supabaseRequest(path, options = {}) {
@@ -90,39 +88,10 @@ async function showApplication() {
   await checkHealth();
 }
 
-async function requestOtp(phone) {
-  await supabaseRequest('/otp', { method: 'POST', body: JSON.stringify({ phone, create_user: false, channel: 'sms' }) });
-}
-
-async function verifyOtp(phone, token, persistent) {
-  const value = await supabaseRequest('/verify', { method: 'POST', body: JSON.stringify({ type: 'sms', phone, token }) });
+async function signInWithPin(phone, pin, persistent) {
+  const value = await supabaseRequest('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ phone, password: pin }) });
   saveSession(value, persistent);
   try { await showApplication(); } catch (error) { clearSession(); throw error; }
-}
-
-function showPhoneStage() {
-  authStage = 'phone';
-  pendingPhone = '';
-  $('#phoneStage').classList.remove('hidden');
-  $('#otpStage').classList.add('hidden');
-  $('#resendOtp').classList.add('hidden');
-  $('#phone').required = true;
-  $('#otp').required = false;
-  $('#otp').value = '';
-  setAuthBusy(false);
-}
-
-function showOtpStage(phone) {
-  authStage = 'otp';
-  pendingPhone = phone;
-  $('#phoneStage').classList.add('hidden');
-  $('#otpStage').classList.remove('hidden');
-  $('#resendOtp').classList.remove('hidden');
-  $('#phone').required = false;
-  $('#otp').required = true;
-  $('#otpPhone').textContent = phone.replace(/(\+91)(\d{2})(\d{4})(\d{4})/, '$1 $2••••$4');
-  $('#otp').focus();
-  setAuthBusy(false);
 }
 
 async function restoreSession() {
@@ -166,17 +135,12 @@ $('#loginForm').addEventListener('submit', async (event) => {
   }
   setAuthBusy(true);
   try {
-    if (authStage === 'phone') {
-      const nationalNumber = $('#phone').value.replace(/\D/g, '');
-      if (!/^[6-9]\d{9}$/.test(nationalNumber)) throw new Error('Enter a valid 10-digit Indian mobile number');
-      const phone = `+91${nationalNumber}`;
-      await requestOtp(phone);
-      showOtpStage(phone);
-      showToast('OTP sent securely');
-    } else {
-      await verifyOtp(pendingPhone, $('#otp').value.trim(), $('#rememberSession').checked);
-      showToast('Signed in securely');
-    }
+    const nationalNumber = $('#phone').value.replace(/\D/g, '');
+    if (!/^[6-9]\d{9}$/.test(nationalNumber)) throw new Error('Enter a valid 10-digit Indian mobile number');
+    const pin = $('#pin').value.trim();
+    if (!/^\d{6}$/.test(pin)) throw new Error('Enter your 6-digit PIN');
+    await signInWithPin(`+91${nationalNumber}`, pin, $('#rememberSession').checked);
+    showToast('Signed in securely');
   } catch (error) { showToast(error.message, 'error'); }
   finally { setAuthBusy(false); }
 });
@@ -188,12 +152,14 @@ $('#logoutButton').addEventListener('click', async () => {
   clearSession(); showLogin(); showToast('Signed out');
 });
 
-$('#changePhone').addEventListener('click', showPhoneStage);
-$('#resendOtp').addEventListener('click', async () => {
-  if (!pendingPhone) return;
-  try { await requestOtp(pendingPhone); showToast('A new OTP has been sent'); }
-  catch (error) { showToast(error.message, 'error'); }
+$('#togglePin').addEventListener('click', () => {
+  const pin = $('#pin');
+  const visible = pin.type === 'text';
+  pin.type = visible ? 'password' : 'text';
+  $('#togglePin').textContent = visible ? 'Show' : 'Hide';
+  $('#togglePin').setAttribute('aria-label', visible ? 'Show PIN' : 'Hide PIN');
 });
+$('#forgotPin').addEventListener('click', () => showToast('Contact your branch administrator to reset your PIN'));
 
 const sidebar = $('#sidebar');
 const scrim = $('#scrim');

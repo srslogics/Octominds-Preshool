@@ -1,10 +1,13 @@
+import json
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .auth import CurrentUser, Role, get_current_user, require_roles
@@ -76,3 +79,25 @@ def admin_access(
     ],
 ):
     return {"allowed": True, "role": user.role, "branch_id": user.branch_id}
+
+
+@app.get("/config.js", include_in_schema=False)
+def frontend_config(config: Annotated[Settings, Depends(get_settings)]) -> Response:
+    """Expose only browser-safe runtime configuration."""
+    payload = (
+        "window.OCTOMINDS_CONFIG = Object.freeze({"
+        f"supabaseUrl: {json.dumps(config.supabase_url)},"
+        f"supabaseAnonKey: {json.dumps(config.supabase_anon_key)},"
+        "apiBaseUrl: window.location.origin"
+        "});\n"
+    )
+    return Response(
+        content=payload,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# Keep this mount last so API and health routes always take precedence.
+frontend_directory = Path(__file__).resolve().parents[1] / "public"
+app.mount("/", StaticFiles(directory=frontend_directory, html=True), name="frontend")

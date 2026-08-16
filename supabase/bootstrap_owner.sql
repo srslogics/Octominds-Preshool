@@ -1,5 +1,5 @@
--- Run this once after the owner successfully completes the first Supabase
--- phone verification and a profile row exists. Replace the placeholder with
+-- Run this after the owner is created in Supabase Auth using their phone
+-- number and six-digit PIN as the password. Replace the placeholder with
 -- the owner's E.164 mobile number, for example +91XXXXXXXXXX.
 
 insert into public.user_memberships (user_id, branch_id, role, is_active)

@@ -4,7 +4,7 @@ This workspace contains the first working product foundation for OctoMinds.
 
 ## Included
 
-- Responsive sign-in and account recovery interface
+- Responsive mobile-number and PIN sign-in interface
 - Role-aware navigation and branch context
 - Operations dashboard with reusable cards, tables, forms, dialogs, toasts, and profile drawer
 - Desktop and mobile navigation
@@ -17,11 +17,15 @@ This workspace contains the first working product foundation for OctoMinds.
 
 Serve the `public` directory with any static web server. The application does not include demo credentials or simulated authentication. Sign-in remains unavailable until the approved Supabase and API environments are configured.
 
+## Render deployment
+
+`render.yaml` provisions one Python web service. FastAPI serves the protected API, runtime browser configuration, frontend, and PWA from the same Render domain. Set the requested Supabase environment values in Render when deploying the Blueprint; never commit database or JWT secrets.
+
 ## API setup
 
 1. Run `supabase/migrations/202608160001_phase_1_foundation.sql` in the approved Supabase project.
-2. Enable Supabase Phone authentication and configure an SMS provider.
-3. Create the owner phone user in Supabase Auth, then run `supabase/bootstrap_owner.sql` with the owner's E.164 number.
+2. Enable Supabase Phone authentication. SMS configuration is not required for the initial PIN release.
+3. Create the owner phone user in Supabase Auth with a strong six-digit PIN as the password, then run `supabase/bootstrap_owner.sql` with the owner's E.164 number.
 4. Copy `.env.example` to `.env` and provide the Supabase values.
 5. Set `public/config.js` to the approved Supabase URL, anonymous key, and API URL.
 6. Install `requirements.txt` in a Python virtual environment.

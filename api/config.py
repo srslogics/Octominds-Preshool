@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     app_name: str = "OctoMinds API"
     environment: str = "development"
     frontend_origin: str = "http://localhost:4173"
-    supabase_url: str = ""
+    supabase_url: str = "https://yusionsehwfrqwsmjwtx.supabase.co"
     supabase_anon_key: str = ""
     supabase_jwt_secret: str = ""
     database_url: str = ""

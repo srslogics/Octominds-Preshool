@@ -1,5 +1,5 @@
 window.OCTOMINDS_CONFIG = Object.freeze({
-  supabaseUrl: "https://yusionsehwfrqwsmjwtx.supabase.co",
+  supabaseUrl: "https://ipzhzxemjflihwbutkjl.supabase.co",
   supabaseAnonKey: "",
   apiBaseUrl: "http://localhost:8000"
 });

@@ -55,6 +55,26 @@ def _decode_token(token: str, settings: Settings) -> dict:
     return jwt.decode(token, signing_key.key, algorithms=[algorithm], audience="authenticated")
 
 
+def _load_auth_claims(token: str, settings: Settings) -> dict:
+    headers = {"apikey": settings.supabase_anon_key, "Authorization": f"Bearer {token}"}
+    with httpx.Client(base_url=settings.supabase_url, headers=headers, timeout=8.0) as client:
+        response = client.get("/auth/v1/user")
+        response.raise_for_status()
+        user = response.json()
+    return {
+        "sub": user["id"],
+        "email": user.get("email", ""),
+        "phone": user.get("phone"),
+    }
+
+
+def _validated_claims(token: str, settings: Settings) -> dict:
+    try:
+        return _decode_token(token, settings)
+    except (jwt.PyJWTError, ValueError):
+        return _load_auth_claims(token, settings)
+
+
 def _load_access_profile(token: str, user_id: str, settings: Settings) -> tuple[Role, str | None, str | None, str | None]:
     headers = {"apikey": settings.supabase_anon_key, "Authorization": f"Bearer {token}"}
     with httpx.Client(base_url=f"{settings.supabase_url}/rest/v1", headers=headers, timeout=8.0) as client:
@@ -91,7 +111,7 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
     try:
-        claims = _decode_token(credentials.credentials, settings)
+        claims = _validated_claims(credentials.credentials, settings)
         role, branch_id, full_name, branch_name = _load_access_profile(credentials.credentials, claims["sub"], settings)
         return CurrentUser(
             id=claims["sub"],

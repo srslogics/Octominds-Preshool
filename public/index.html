@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#17324d" />
+    <meta name="theme-color" content="#0b2431" />
     <meta name="description" content="OctoMinds connects preschool branches, classrooms, families, and daily operations in one secure workspace." />
     <link rel="canonical" href="https://octominds-preshool.onrender.com/" />
     <meta property="og:type" content="website" />
@@ -22,7 +22,8 @@
     <meta name="twitter:description" content="Preschool operations, beautifully connected." />
     <meta name="twitter:image" content="https://octominds-preshool.onrender.com/og.png?v=2" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/styles.css?v=dashboard-v3" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="/styles.css?v=premium-v1" />
     <title>OctoMinds | Operations Platform</title>
   </head>
   <body>
@@ -34,7 +35,7 @@
           <span>OctoMinds</span>
         </a>
         <div class="story-copy">
-          <span class="eyebrow">PRESCHOOL OPERATIONS, BEAUTIFULLY CONNECTED</span>
+          <span class="eyebrow">THE OPERATING SYSTEM FOR MODERN PRESCHOOLS</span>
           <h1>More time for children.<br /><em>Less time on admin.</em></h1>
           <p>One secure workspace for every branch, every classroom, and every family you support.</p>
           <div class="story-features" aria-label="Platform highlights">
@@ -42,8 +43,8 @@
           </div>
         </div>
         <div class="story-proof">
-          <div class="proof-mark" aria-hidden="true">08</div>
-          <p><strong>Everything in one place</strong><br />Admissions, students, attendance, fees, inventory, daycare, and communication.</p>
+          <div class="proof-mark" aria-hidden="true"><i class="bi bi-stars"></i></div>
+          <p><strong>One calm, connected workspace</strong><br />Admissions, students, attendance, fees, inventory, daycare, and communication.</p>
         </div>
       </section>
 
@@ -67,7 +68,7 @@
               </label>
             </div>
             <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" checked /> Keep me signed in</label><button class="text-button" id="forgotPin" type="button">Forgot PIN?</button></div>
-            <button id="authSubmit" class="primary-button full" type="submit">Continue securely <span>→</span></button>
+            <button id="authSubmit" class="primary-button full" type="submit">Continue securely <i class="bi bi-arrow-right"></i></button>
           </form>
           <p class="access-note"><span>✓</span> Access is limited to approved OctoMinds accounts.</p>
         </div>
@@ -82,59 +83,59 @@
             <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
             <span>OctoMinds</span>
           </a>
-          <button id="closeNav" class="icon-button mobile-only" aria-label="Close navigation">×</button>
+          <button id="closeNav" class="icon-button mobile-only" aria-label="Close navigation"><i class="bi bi-x-lg"></i></button>
         </div>
         <nav aria-label="Primary navigation">
           <p class="nav-label">WORKSPACE</p>
-          <a class="nav-item active" href="#overview" data-view="Overview"><span class="nav-glyph">⌂</span>Overview</a>
-          <a class="nav-item" href="#admissions" data-view="Admissions"><span class="nav-glyph">◎</span>Admissions</a>
-          <a class="nav-item" href="#students" data-view="Students"><span class="nav-glyph">♙</span>Students</a>
-          <a class="nav-item" href="#academics" data-view="Academics"><span class="nav-glyph">▤</span>Academics</a>
-          <a class="nav-item" href="#attendance" data-view="Attendance"><span class="nav-glyph">✓</span>Attendance</a>
+          <a class="nav-item active" href="#overview" data-view="Overview"><span class="nav-glyph"><i class="bi bi-grid-1x2"></i></span>Overview</a>
+          <a class="nav-item" href="#admissions" data-view="Admissions"><span class="nav-glyph"><i class="bi bi-inbox"></i></span>Admissions</a>
+          <a class="nav-item" href="#students" data-view="Students"><span class="nav-glyph"><i class="bi bi-people"></i></span>Students</a>
+          <a class="nav-item" href="#academics" data-view="Academics"><span class="nav-glyph"><i class="bi bi-journal-bookmark"></i></span>Academics</a>
+          <a class="nav-item" href="#attendance" data-view="Attendance"><span class="nav-glyph"><i class="bi bi-calendar2-check"></i></span>Attendance</a>
           <p class="nav-label">OPERATIONS</p>
-          <a class="nav-item" href="#staff" data-view="Branches & staff"><span class="nav-glyph">◇</span>Branches & staff</a>
-          <a class="nav-item" href="#fees" data-view="Fees"><span class="nav-glyph">₹</span>Fees</a>
-          <a class="nav-item" href="#inventory" data-view="Inventory"><span class="nav-glyph">□</span>Inventory</a>
-          <a class="nav-item" href="#reports" data-view="Reports"><span class="nav-glyph">↗</span>Reports</a>
+          <a class="nav-item" href="#staff" data-view="Branches & staff"><span class="nav-glyph"><i class="bi bi-buildings"></i></span>Branches & staff</a>
+          <a class="nav-item" href="#fees" data-view="Fees"><span class="nav-glyph"><i class="bi bi-wallet2"></i></span>Fees</a>
+          <a class="nav-item" href="#inventory" data-view="Inventory"><span class="nav-glyph"><i class="bi bi-box-seam"></i></span>Inventory</a>
+          <a class="nav-item" href="#reports" data-view="Reports"><span class="nav-glyph"><i class="bi bi-bar-chart"></i></span>Reports</a>
         </nav>
-        <div class="sidebar-help"><span>?</span><div><strong>Need help?</strong><small>Open the setup guide</small></div></div>
-        <button id="logoutButton" class="logout-button"><span>↪</span> Sign out</button>
+        <div class="sidebar-help"><span><i class="bi bi-question-lg"></i></span><div><strong>Need help?</strong><small>Open the setup guide</small></div></div>
+        <button id="logoutButton" class="logout-button"><i class="bi bi-box-arrow-right"></i> Sign out</button>
       </aside>
       <div id="scrim" class="scrim"></div>
 
       <section class="workspace">
         <header class="topbar">
           <div class="topbar-left">
-            <button id="openNav" class="icon-button mobile-only" aria-label="Open navigation">☰</button>
+            <button id="openNav" class="icon-button mobile-only" aria-label="Open navigation"><i class="bi bi-list"></i></button>
             <div class="page-context"><strong>Operations</strong><small>Preschool workspace</small></div>
           </div>
           <div class="branch-control"><span>Branch</span><button id="branchButton">— <b>⌄</b></button></div>
           <div class="topbar-actions">
-            <button id="searchButton" class="icon-button" aria-label="Search">⌕</button>
-            <button id="notificationButton" class="icon-button notification-button" aria-label="Notifications">♢<span></span></button>
-            <button id="profileButton" class="profile-button"><span class="avatar">—</span><span class="profile-copy"><strong>Signed-in user</strong><small>Loading access…</small></span><b>⌄</b></button>
+            <button id="searchButton" class="icon-button" aria-label="Search"><i class="bi bi-search"></i></button>
+            <button id="notificationButton" class="icon-button notification-button" aria-label="Notifications"><i class="bi bi-bell"></i><span></span></button>
+            <button id="profileButton" class="profile-button"><span class="avatar">—</span><span class="profile-copy"><strong>Signed-in user</strong><small>Loading access…</small></span><i class="bi bi-chevron-down"></i></button>
           </div>
         </header>
 
         <div class="page-content">
           <section class="welcome-row dashboard-hero">
             <div><p id="todayLabel" class="date-line">TODAY</p><h1 id="pageTitle">Your OctoMinds workspace</h1><p class="muted">A clear view of your branches, people, and daily operations.</p></div>
-            <div class="welcome-actions"><span class="live-status"><i></i> Workspace online</span><button id="exportButton" class="secondary-button">↻ Refresh</button></div>
+            <div class="welcome-actions"><span class="live-status"><i></i> Workspace online</span><button id="exportButton" class="secondary-button"><i class="bi bi-arrow-clockwise"></i> Refresh</button></div>
           </section>
 
           <section class="status-strip" aria-label="Daily status">
-            <div><span class="status-icon coral">♙</span><p><strong id="studentCount">—</strong><small>Active students</small></p><span class="trend neutral">No records yet</span></div>
-            <div><span class="status-icon teal">✓</span><p><strong id="attendanceRate">—</strong><small>Attendance today</small></p><span class="trend neutral">No records yet</span></div>
-            <div><span class="status-icon gold">◎</span><p><strong id="enquiryCount">—</strong><small>Open enquiries</small></p><span class="trend neutral">No records yet</span></div>
-            <div><span class="status-icon blue">₹</span><p><strong id="feeCollection">—</strong><small>Fees collected</small></p><span class="trend neutral">No records yet</span></div>
+            <div><span class="status-icon coral"><i class="bi bi-people"></i></span><p><strong id="studentCount">—</strong><small>Active students</small></p><span class="trend neutral">Awaiting records</span></div>
+            <div><span class="status-icon teal"><i class="bi bi-calendar2-check"></i></span><p><strong id="attendanceRate">—</strong><small>Attendance today</small></p><span class="trend neutral">Awaiting records</span></div>
+            <div><span class="status-icon gold"><i class="bi bi-inbox"></i></span><p><strong id="enquiryCount">—</strong><small>Open enquiries</small></p><span class="trend neutral">Awaiting records</span></div>
+            <div><span class="status-icon blue"><i class="bi bi-wallet2"></i></span><p><strong id="feeCollection">—</strong><small>Fees collected</small></p><span class="trend neutral">Awaiting records</span></div>
           </section>
 
           <section class="dashboard-grid">
             <article class="card setup-card">
               <div class="card-head"><div><p class="section-kicker">GETTING STARTED</p><h2>Set up your workspace</h2><p class="card-subtitle">Complete the essentials before teams begin daily operations.</p></div><span class="tag teal-soft">2 OF 4 READY</span></div>
               <div class="setup-list">
-                <div class="complete"><span>✓</span><p><strong>Owner access verified</strong><small>Your secure Super Admin account is active.</small></p><em>Complete</em></div>
-                <div class="complete"><span>✓</span><p><strong>Data connection established</strong><small>The production workspace is connected and protected.</small></p><em>Complete</em></div>
+                <div class="complete"><span><i class="bi bi-check2"></i></span><p><strong>Owner access verified</strong><small>Your secure Super Admin account is active.</small></p><em>Complete</em></div>
+                <div class="complete"><span><i class="bi bi-check2"></i></span><p><strong>Data connection established</strong><small>The production workspace is connected and protected.</small></p><em>Complete</em></div>
                 <div><span>3</span><p><strong>Add your first branch</strong><small>Create the branch profile, timings, and contact details.</small></p><em>Next</em></div>
                 <div><span>4</span><p><strong>Add staff access</strong><small>Assign people to branches with the correct roles.</small></p><em>Pending</em></div>
               </div>
@@ -152,7 +153,7 @@
 
             <article class="card activity-card">
               <div class="card-head"><div><p class="section-kicker">RECENT ACTIVITY</p><h2>Workspace activity</h2></div><span class="quiet-label">Today</span></div>
-              <div class="empty-state"><span>▦</span><strong>Your activity feed starts here</strong><p>Updates from admissions, students, attendance, fees, and inventory will appear as your team begins using OctoMinds.</p></div>
+              <div class="empty-state"><span><i class="bi bi-activity"></i></span><strong>Your activity feed starts here</strong><p>Updates from admissions, students, attendance, fees, and inventory will appear as your team begins using OctoMinds.</p></div>
             </article>
 
             <article class="card health-card">
@@ -165,13 +166,13 @@
     </main>
 
     <aside id="profileDrawer" class="drawer" aria-hidden="true">
-      <div class="drawer-head"><h2>Your profile</h2><button id="closeDrawer" class="icon-button" aria-label="Close profile">×</button></div>
+      <div class="drawer-head"><h2>Your profile</h2><button id="closeDrawer" class="icon-button" aria-label="Close profile"><i class="bi bi-x-lg"></i></button></div>
       <div class="profile-hero"><span id="drawerAvatar" class="avatar large">—</span><div><strong id="drawerName">Signed-in user</strong><small id="drawerRole">Loading access…</small></div></div>
       <dl><div><dt>Branch</dt><dd id="drawerBranch">—</dd></div><div><dt>Mobile</dt><dd id="drawerEmail">—</dd></div><div><dt>Access</dt><dd id="drawerAccess">—</dd></div><div><dt>Session</dt><dd>Verified</dd></div></dl>
       <button class="secondary-button full">Manage profile</button>
     </aside>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js?v=dashboard-v3"></script>
+    <script src="/app.js?v=premium-v1"></script>
   </body>
 </html>

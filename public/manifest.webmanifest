@@ -4,7 +4,7 @@
   "description": "A multi-branch operations platform for preschool and daycare teams.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f6f8fa",
-  "theme_color": "#17324d",
+  "background_color": "#f3f6f5",
+  "theme_color": "#0b2431",
   "icons": []
 }

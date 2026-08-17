@@ -23,7 +23,7 @@ function showToast(message, kind = 'info') {
 function setAuthBusy(busy) {
   const button = $('#loginForm [type="submit"]');
   button.disabled = busy;
-  button.innerHTML = busy ? 'Signing in…' : 'Continue securely <span>→</span>';
+  button.innerHTML = busy ? 'Signing in…' : 'Continue securely <i class="bi bi-arrow-right"></i>';
 }
 
 async function supabaseRequest(path, options = {}) {
@@ -173,7 +173,7 @@ $('#closeNav').addEventListener('click', () => setNav(false));
 scrim.addEventListener('click', () => setNav(false));
 $$('.nav-item').forEach((item) => item.addEventListener('click', (event) => {
   event.preventDefault();
-  if (item.dataset.view !== 'Overview') return showToast(`${item.dataset.view} is not part of Phase 1 yet`);
+  if (item.dataset.view !== 'Overview') return showToast(`${item.dataset.view} is coming in the next OctoMinds release`);
   $$('.nav-item').forEach((link) => link.classList.remove('active'));
   item.classList.add('active'); setNav(false);
 }));

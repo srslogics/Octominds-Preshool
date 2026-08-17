@@ -2,6 +2,12 @@
 -- <10-digit-mobile>@auth.octominds.invalid identity and six-digit PIN, with
 -- the real E.164 phone number stored on auth.users.
 
+update public.profiles
+set full_name = 'Souraabh', updated_at = now()
+where id in (
+  select id from auth.users where phone = '+91XXXXXXXXXX'
+);
+
 insert into public.user_memberships (user_id, branch_id, role, is_active)
 select id, null, 'super_admin', true
 from auth.users

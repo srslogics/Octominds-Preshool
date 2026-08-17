@@ -22,7 +22,7 @@
     <meta name="twitter:description" content="Preschool operations, beautifully connected." />
     <meta name="twitter:image" content="https://octominds-preshool.onrender.com/og.png?v=2" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="stylesheet" href="/styles.css?v=pin-v1" />
+    <link rel="stylesheet" href="/styles.css?v=dashboard-v3" />
     <title>OctoMinds | Operations Platform</title>
   </head>
   <body>
@@ -78,31 +78,37 @@
     <main id="appView" class="app-shell hidden">
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-head">
-          <a class="brand brand-light" href="#"><span class="brand-mark">O</span><span>OctoMinds</span></a>
+          <a class="brand brand-light" href="#overview" aria-label="OctoMinds overview">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span>OctoMinds</span>
+          </a>
           <button id="closeNav" class="icon-button mobile-only" aria-label="Close navigation">×</button>
         </div>
         <nav aria-label="Primary navigation">
           <p class="nav-label">WORKSPACE</p>
-          <a class="nav-item active" href="#overview" data-view="Overview"><span>⌂</span>Overview</a>
-          <a class="nav-item" href="#admissions" data-view="Admissions"><span>◎</span>Admissions <em>12</em></a>
-          <a class="nav-item" href="#students" data-view="Students"><span>♙</span>Students</a>
-          <a class="nav-item" href="#academics" data-view="Academics"><span>▤</span>Academics</a>
-          <a class="nav-item" href="#attendance" data-view="Attendance"><span>✓</span>Attendance</a>
+          <a class="nav-item active" href="#overview" data-view="Overview"><span class="nav-glyph">⌂</span>Overview</a>
+          <a class="nav-item" href="#admissions" data-view="Admissions"><span class="nav-glyph">◎</span>Admissions</a>
+          <a class="nav-item" href="#students" data-view="Students"><span class="nav-glyph">♙</span>Students</a>
+          <a class="nav-item" href="#academics" data-view="Academics"><span class="nav-glyph">▤</span>Academics</a>
+          <a class="nav-item" href="#attendance" data-view="Attendance"><span class="nav-glyph">✓</span>Attendance</a>
           <p class="nav-label">OPERATIONS</p>
-          <a class="nav-item" href="#staff" data-view="Branches & staff"><span>◇</span>Branches & staff</a>
-          <a class="nav-item" href="#fees" data-view="Fees"><span>₹</span>Fees</a>
-          <a class="nav-item" href="#inventory" data-view="Inventory"><span>□</span>Inventory</a>
-          <a class="nav-item" href="#reports" data-view="Reports"><span>↗</span>Reports</a>
+          <a class="nav-item" href="#staff" data-view="Branches & staff"><span class="nav-glyph">◇</span>Branches & staff</a>
+          <a class="nav-item" href="#fees" data-view="Fees"><span class="nav-glyph">₹</span>Fees</a>
+          <a class="nav-item" href="#inventory" data-view="Inventory"><span class="nav-glyph">□</span>Inventory</a>
+          <a class="nav-item" href="#reports" data-view="Reports"><span class="nav-glyph">↗</span>Reports</a>
         </nav>
-        <div class="sidebar-help"><span>?</span><div><strong>Need help?</strong><small>View setup guide</small></div></div>
+        <div class="sidebar-help"><span>?</span><div><strong>Need help?</strong><small>Open the setup guide</small></div></div>
         <button id="logoutButton" class="logout-button"><span>↪</span> Sign out</button>
       </aside>
       <div id="scrim" class="scrim"></div>
 
       <section class="workspace">
         <header class="topbar">
-          <button id="openNav" class="icon-button mobile-only" aria-label="Open navigation">☰</button>
-          <div class="branch-control"><span>Viewing</span><button id="branchButton">— <b>⌄</b></button></div>
+          <div class="topbar-left">
+            <button id="openNav" class="icon-button mobile-only" aria-label="Open navigation">☰</button>
+            <div class="page-context"><strong>Operations</strong><small>Preschool workspace</small></div>
+          </div>
+          <div class="branch-control"><span>Branch</span><button id="branchButton">— <b>⌄</b></button></div>
           <div class="topbar-actions">
             <button id="searchButton" class="icon-button" aria-label="Search">⌕</button>
             <button id="notificationButton" class="icon-button notification-button" aria-label="Notifications">♢<span></span></button>
@@ -111,9 +117,9 @@
         </header>
 
         <div class="page-content">
-          <section class="welcome-row">
-            <div><p id="todayLabel" class="date-line">TODAY</p><h1 id="pageTitle">Your OctoMinds workspace</h1><p class="muted">Your authorized branch and operational data appear here.</p></div>
-            <div class="welcome-actions"><button id="exportButton" class="secondary-button">⇩ Export</button></div>
+          <section class="welcome-row dashboard-hero">
+            <div><p id="todayLabel" class="date-line">TODAY</p><h1 id="pageTitle">Your OctoMinds workspace</h1><p class="muted">A clear view of your branches, people, and daily operations.</p></div>
+            <div class="welcome-actions"><span class="live-status"><i></i> Workspace online</span><button id="exportButton" class="secondary-button">↻ Refresh</button></div>
           </section>
 
           <section class="status-strip" aria-label="Daily status">
@@ -124,18 +130,18 @@
           </section>
 
           <section class="dashboard-grid">
-            <article class="card schedule-card">
-              <div class="card-head"><div><p class="section-kicker">PLATFORM STATUS</p><h2>Phase 1 foundation</h2></div><span class="tag teal-soft">ACTIVE</span></div>
-              <div class="foundation-list">
-                <div><span>✓</span><p><strong>Secure authentication</strong><small>Supabase identity with server-side token verification</small></p></div>
-                <div><span>✓</span><p><strong>Role and branch access</strong><small>Membership-controlled permissions for every user</small></p></div>
-                <div><span>✓</span><p><strong>Protected application shell</strong><small>Authenticated navigation, profile, and session controls</small></p></div>
-                <div><span>✓</span><p><strong>Operational readiness</strong><small>Logging, health checks, PWA shell, and deployment configuration</small></p></div>
+            <article class="card setup-card">
+              <div class="card-head"><div><p class="section-kicker">GETTING STARTED</p><h2>Set up your workspace</h2><p class="card-subtitle">Complete the essentials before teams begin daily operations.</p></div><span class="tag teal-soft">2 OF 4 READY</span></div>
+              <div class="setup-list">
+                <div class="complete"><span>✓</span><p><strong>Owner access verified</strong><small>Your secure Super Admin account is active.</small></p><em>Complete</em></div>
+                <div class="complete"><span>✓</span><p><strong>Data connection established</strong><small>The production workspace is connected and protected.</small></p><em>Complete</em></div>
+                <div><span>3</span><p><strong>Add your first branch</strong><small>Create the branch profile, timings, and contact details.</small></p><em>Next</em></div>
+                <div><span>4</span><p><strong>Add staff access</strong><small>Assign people to branches with the correct roles.</small></p><em>Pending</em></div>
               </div>
             </article>
 
-            <article class="card actions-card">
-              <div class="card-head"><div><p class="section-kicker">ACCOUNT</p><h2>Your access</h2></div><span class="count-badge">✓</span></div>
+            <article class="card access-card">
+              <div class="card-head"><div><p class="section-kicker">YOUR ACCOUNT</p><h2>Access details</h2></div><span class="verified-badge">✓ Verified</span></div>
               <div class="access-details">
                 <div><span>Role</span><strong id="sessionRole">Loading…</strong></div>
                 <div><span>Branch</span><strong id="sessionBranch">Loading…</strong></div>
@@ -144,13 +150,13 @@
               </div>
             </article>
 
-            <article class="card admissions-card empty-card">
-              <div class="card-head"><div><p class="section-kicker">OPERATIONS</p><h2>Dashboard data</h2></div></div>
-              <div class="empty-state"><span>▦</span><strong>No operational records yet</strong><p>Dashboard metrics will populate from the live modules as admissions, students, attendance, fees, and inventory are released.</p></div>
+            <article class="card activity-card">
+              <div class="card-head"><div><p class="section-kicker">RECENT ACTIVITY</p><h2>Workspace activity</h2></div><span class="quiet-label">Today</span></div>
+              <div class="empty-state"><span>▦</span><strong>Your activity feed starts here</strong><p>Updates from admissions, students, attendance, fees, and inventory will appear as your team begins using OctoMinds.</p></div>
             </article>
 
-            <article class="card branch-card">
-              <div class="card-head"><div><p class="section-kicker">SYSTEM</p><h2>Environment health</h2></div><button id="refreshHealth" class="text-button">Refresh</button></div>
+            <article class="card health-card">
+              <div class="card-head"><div><p class="section-kicker">SYSTEM STATUS</p><h2>Services</h2></div><button id="refreshHealth" class="text-button">Check again</button></div>
               <div class="health-list"><div><span>Web application</span><strong class="good">Available</strong></div><div><span>API service</span><strong id="apiHealth">Checking…</strong></div><div><span>Authentication</span><strong id="authHealth">Checking…</strong></div><div><span>Data access</span><strong id="dataHealth">Checking…</strong></div></div>
             </article>
           </section>
@@ -166,6 +172,6 @@
     </aside>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js?v=pin-v2"></script>
+    <script src="/app.js?v=dashboard-v3"></script>
   </body>
 </html>

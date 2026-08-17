@@ -68,11 +68,13 @@ function showLogin() {
 async function showApplication() {
   const current = await apiRequest('/api/v1/session');
   const roleLabel = current.role_label || current.role.replaceAll('_', ' ');
+  const rawIdentity = current.phone || current.email;
+  const digits = String(rawIdentity || '').replace(/\D/g, '');
+  const loginIdentity = digits.length >= 10 ? `+91 •••••• ${digits.slice(-4)}` : rawIdentity;
   $('#sessionRole').textContent = roleLabel;
   $('#sessionBranch').textContent = current.branch_name || (current.branch_id ? 'Assigned branch' : 'All branches');
-  const loginIdentity = current.phone || current.email;
   $('#sessionEmail').textContent = loginIdentity;
-  $('.profile-copy strong').textContent = current.full_name || loginIdentity;
+  $('.profile-copy strong').textContent = current.full_name || 'OctoMinds user';
   $('.profile-copy small').textContent = roleLabel;
   const initials = (current.full_name || 'OctoMinds User').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('');
   $$('.avatar').forEach((avatar) => { avatar.textContent = initials; });
@@ -184,7 +186,7 @@ $('#refreshHealth').addEventListener('click', checkHealth);
 $('#notificationButton').addEventListener('click', () => showToast('No unread notifications'));
 $('#searchButton').addEventListener('click', () => showToast('Search becomes available with the operational modules'));
 $('#branchButton').addEventListener('click', () => showToast('Branch access is controlled by your assigned membership'));
-$('#exportButton').addEventListener('click', () => showToast('There is no operational data to export yet'));
+$('#exportButton').addEventListener('click', async () => { await checkHealth(); showToast('Dashboard refreshed'); });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { setDrawer(false); setNav(false); } });
 
 if (!configured()) $('#configurationNotice').classList.remove('hidden');

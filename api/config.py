@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,11 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""
     database_url: str = ""
     log_level: str = "INFO"
+
+    @field_validator("supabase_url", mode="before")
+    @classmethod
+    def use_confirmed_supabase_project(cls, _value: str) -> str:
+        return "https://ipzhzxemjflihwbutkjl.supabase.co"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

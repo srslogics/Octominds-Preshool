@@ -71,7 +71,15 @@ security definer set search_path = ''
 as $$
 begin
   insert into public.profiles (id, full_name)
-  values (new.id, coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), split_part(new.email, '@', 1)));
+  values (
+    new.id,
+    coalesce(
+      nullif(new.raw_user_meta_data ->> 'full_name', ''),
+      nullif(new.phone, ''),
+      nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
+      'OctoMinds User'
+    )
+  );
   return new;
 end;
 $$;

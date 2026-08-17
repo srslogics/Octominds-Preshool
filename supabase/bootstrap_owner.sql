@@ -1,6 +1,6 @@
--- Run this after the owner is created in Supabase Auth using their phone
--- number and six-digit PIN as the password. Replace the placeholder with
--- the owner's E.164 mobile number, for example +91XXXXXXXXXX.
+-- Run this after the owner is created in Supabase Auth using the internal
+-- <10-digit-mobile>@auth.octominds.invalid identity and six-digit PIN, with
+-- the real E.164 phone number stored on auth.users.
 
 insert into public.user_memberships (user_id, branch_id, role, is_active)
 select id, null, 'super_admin', true

@@ -1,4 +1,4 @@
-const CACHE = 'octominds-phase-1-v4';
+const CACHE = 'octominds-phase-1-v5';
 const SHELL = ['/', '/index.html', '/styles.css', '/config.js', '/app.js', '/manifest.webmanifest'];
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL))));
 self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))));

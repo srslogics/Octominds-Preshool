@@ -89,7 +89,9 @@ async function showApplication() {
 }
 
 async function signInWithPin(phone, pin, persistent) {
-  const value = await supabaseRequest('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ phone, password: pin }) });
+  const nationalNumber = phone.replace(/\D/g, '').slice(-10);
+  const loginEmail = `${nationalNumber}@auth.octominds.invalid`;
+  const value = await supabaseRequest('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: loginEmail, password: pin }) });
   saveSession(value, persistent);
   try { await showApplication(); } catch (error) { clearSession(); throw error; }
 }

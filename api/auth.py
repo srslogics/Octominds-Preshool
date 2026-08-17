@@ -39,13 +39,20 @@ bearer = HTTPBearer(auto_error=False)
 
 
 def _decode_token(token: str, settings: Settings) -> dict:
-    if settings.supabase_jwt_secret:
+    algorithm = jwt.get_unverified_header(token).get("alg")
+
+    if algorithm == "HS256":
+        if not settings.supabase_jwt_secret:
+            raise ValueError("Supabase JWT secret is not configured")
         return jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"], audience="authenticated")
+
+    if algorithm not in {"RS256", "ES256"}:
+        raise ValueError("Unsupported access token algorithm")
     if not settings.supabase_url:
         raise ValueError("Supabase is not configured")
     jwks_client = jwt.PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
     signing_key = jwks_client.get_signing_key_from_jwt(token)
-    return jwt.decode(token, signing_key.key, algorithms=["RS256", "ES256"], audience="authenticated")
+    return jwt.decode(token, signing_key.key, algorithms=[algorithm], audience="authenticated")
 
 
 def _load_access_profile(token: str, user_id: str, settings: Settings) -> tuple[Role, str | None, str | None, str | None]:

@@ -1,7 +1,7 @@
 {
-  "name": "OctoMinds Operations Platform",
-  "short_name": "OctoMinds",
-  "description": "A multi-branch operations platform for preschool and daycare teams.",
+  "name": "OctoMinds Inventory",
+  "short_name": "OM Inventory",
+  "description": "Secure branch-wise stock control for OctoMinds preschool operations.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f6f5",

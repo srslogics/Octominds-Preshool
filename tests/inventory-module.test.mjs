@@ -1,0 +1,93 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const root = new URL("../", import.meta.url);
+
+async function source(path) {
+  return readFile(new URL(path, root), "utf8");
+}
+
+test("inventory workspace contains the production workflows", async () => {
+  const [html, javascript, css] = await Promise.all([
+    source("public/index.html"),
+    source("public/app.js"),
+    source("public/styles.css"),
+  ]);
+
+  for (const marker of [
+    'id="inventoryPage"',
+    'id="inventoryItemForm"',
+    'id="inventoryMovementForm"',
+    'id="movementDestination"',
+    'id="inventoryCategoryForm"',
+    'id="inventoryLocationForm"',
+    'id="inventoryItemsBody"',
+  ]) assert.match(html, new RegExp(marker));
+
+  for (const removedModule of ["Admissions", "Students", "Academics", "Fees", "Daycare", "Reports"]) {
+    assert.doesNotMatch(html, new RegExp(`data-view=["']${removedModule}`, "i"));
+  }
+
+  for (const behavior of [
+    "loadInventory",
+    "idempotency_key",
+    "exportInventory",
+    "canWriteInventory",
+    "inventoryStockFilter",
+    "inventory/transfers",
+    "exported.length < total",
+  ]) assert.match(javascript, new RegExp(behavior));
+
+  assert.match(css, /\.inventory-layout/);
+  assert.match(css, /\.app-dialog::backdrop/);
+  assert.match(css, /@media \(max-width: 440px\)/);
+});
+
+test("inventory migration protects integrity and branch access", async () => {
+  const sql = await source("supabase/migrations/202608290001_inventory_production.sql");
+  for (const invariant of [
+    "inventory_movements_immutable",
+    "inventory_stock_nonnegative",
+    "inventory_movement_idempotency_unique",
+    "has_inventory_access",
+    "post_inventory_movement",
+    "for update",
+    "insufficient_stock",
+    "opening_balance_already_exists",
+    "inventory.movement_posted",
+    "transfer_inventory_stock",
+    "inventory.stock_transferred",
+    "transfer_group_id",
+  ]) assert.match(sql, new RegExp(invariant.replaceAll(".", "\\."), "i"));
+
+  assert.doesNotMatch(sql, /grant\s+(update|delete)[^;]*inventory_movements/i);
+  assert.match(sql, /enable row level security/gi);
+});
+
+test("inventory API exposes versioned endpoints behind current-user access", async () => {
+  const [router, permissions, main, config] = await Promise.all([
+    source("api/inventory/router.py"),
+    source("api/inventory/permissions.py"),
+    source("api/main.py"),
+    source("api/config.py"),
+  ]);
+  assert.match(router, /prefix="\/api\/v1\/inventory"/);
+  assert.match(router, /Depends\(get_current_user\)/);
+  assert.match(router, /@router\.post\("\/movements"/);
+  assert.match(router, /@router\.post\("\/transfers"/);
+  assert.match(permissions, /INVENTORY_WRITE_ROLES/);
+  assert.match(permissions, /Requested branch is outside your access/);
+  assert.match(main, /include_router\(inventory_router\)/);
+  assert.match(router, /response_model=LookupResponse/);
+  assert.match(config, /SUPABASE_ANON_KEY is required in production/);
+  assert.doesNotMatch(config, /use_confirmed_supabase_project/);
+});
+
+test("service worker never caches authenticated API data", async () => {
+  const serviceWorker = await source("public/sw.js");
+  assert.match(serviceWorker, /octominds-inventory-v3/);
+  assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
+  assert.match(serviceWorker, /url\.origin !== self\.location\.origin/);
+  assert.doesNotMatch(serviceWorker.match(/const SHELL = \[[^\]]+\]/)?.[0] ?? "", /config\.js/);
+});

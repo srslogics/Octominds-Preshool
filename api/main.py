@@ -10,14 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .auth import CurrentUser, Role, get_current_user, require_roles
+from .auth import CurrentUser, Role, get_current_user
 from .config import Settings, get_settings
+from .inventory.router import router as inventory_router
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("octominds.api")
 
-app = FastAPI(title=settings.app_name, version="0.1.0", docs_url="/docs" if settings.environment != "production" else None)
+app = FastAPI(title=settings.app_name, version="0.2.0", docs_url="/docs" if settings.environment != "production" else None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
@@ -25,6 +26,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+app.include_router(inventory_router)
 
 
 @app.middleware("http")
@@ -63,22 +65,12 @@ class SessionResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
 def health(config: Annotated[Settings, Depends(get_settings)]) -> HealthResponse:
-    return HealthResponse(status="ok", environment=config.environment, version="0.1.0")
+    return HealthResponse(status="ok", environment=config.environment, version="0.2.0")
 
 
 @app.get("/api/v1/session", response_model=SessionResponse, tags=["authentication"])
 def session(user: Annotated[CurrentUser, Depends(get_current_user)]) -> SessionResponse:
     return SessionResponse(**user.__dict__, role_label=user.role_label)
-
-
-@app.get("/api/v1/admin/access-check", tags=["authorization"])
-def admin_access(
-    user: Annotated[
-        CurrentUser,
-        Depends(require_roles(Role.SUPER_ADMIN, Role.MANAGEMENT, Role.BRANCH_ADMIN)),
-    ],
-):
-    return {"allowed": True, "role": user.role, "branch_id": user.branch_id}
 
 
 @app.get("/config.js", include_in_schema=False)

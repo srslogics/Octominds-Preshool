@@ -3,176 +3,123 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b2431" />
-    <meta name="description" content="OctoMinds connects preschool branches, classrooms, families, and daily operations in one secure workspace." />
+    <meta name="theme-color" content="#102b35" />
+    <meta name="description" content="OctoMinds Inventory provides secure, branch-wise stock control for preschool operations." />
     <link rel="canonical" href="https://octominds-preshool.onrender.com/" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="OctoMinds" />
-    <meta property="og:title" content="OctoMinds | Preschool Operations Platform" />
-    <meta property="og:description" content="Preschool operations, beautifully connected." />
+    <meta property="og:site_name" content="OctoMinds Inventory" />
+    <meta property="og:title" content="OctoMinds Inventory" />
+    <meta property="og:description" content="Secure, branch-wise stock control for preschool operations." />
     <meta property="og:url" content="https://octominds-preshool.onrender.com/" />
-    <meta property="og:image" content="https://octominds-preshool.onrender.com/og.png?v=2" />
-    <meta property="og:image:secure_url" content="https://octominds-preshool.onrender.com/og.png?v=2" />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="OctoMinds — Preschool operations, beautifully connected." />
+    <meta property="og:image" content="https://octominds-preshool.onrender.com/og.png?v=inventory-3" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="OctoMinds | Preschool Operations Platform" />
-    <meta name="twitter:description" content="Preschool operations, beautifully connected." />
-    <meta name="twitter:image" content="https://octominds-preshool.onrender.com/og.png?v=2" />
+    <meta name="twitter:title" content="OctoMinds Inventory" />
+    <meta name="twitter:description" content="Secure, branch-wise stock control for preschool operations." />
+    <meta name="twitter:image" content="https://octominds-preshool.onrender.com/og.png?v=inventory-3" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="/styles.css?v=premium-v1" />
-    <title>OctoMinds | Operations Platform</title>
+    <link rel="stylesheet" href="/styles.css?v=inventory-3" />
+    <title>OctoMinds Inventory</title>
   </head>
   <body>
     <main id="authView" class="auth-shell">
-      <section class="auth-story">
-        <div class="story-orb orb-one"></div><div class="story-orb orb-two"></div>
-        <a class="brand brand-light" href="#" aria-label="OctoMinds home">
+      <section class="auth-brand-panel">
+        <a class="brand brand-light" href="#" aria-label="OctoMinds Inventory home">
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-          <span>OctoMinds</span>
+          <span>OctoMinds <small>Inventory</small></span>
         </a>
-        <div class="story-copy">
-          <span class="eyebrow">THE OPERATING SYSTEM FOR MODERN PRESCHOOLS</span>
-          <h1>More time for children.<br /><em>Less time on admin.</em></h1>
-          <p>One secure workspace for every branch, every classroom, and every family you support.</p>
-          <div class="story-features" aria-label="Platform highlights">
-            <span><b>✓</b> Multi-branch control</span><span><b>✓</b> Parent connection</span><span><b>✓</b> Live operations</span>
-          </div>
-        </div>
-        <div class="story-proof">
-          <div class="proof-mark" aria-hidden="true"><i class="bi bi-stars"></i></div>
-          <p><strong>One calm, connected workspace</strong><br />Admissions, students, attendance, fees, inventory, daycare, and communication.</p>
+        <div class="auth-message">
+          <span class="eyebrow">BRANCH-WISE STOCK CONTROL</span>
+          <h1>Every item.<br />Every movement.<br /><em>Always accountable.</em></h1>
+          <p>One secure inventory workspace for catalogue management, live balances, transfers, low-stock alerts, and a permanent audit trail.</p>
+          <div class="auth-points"><span><i class="bi bi-shield-check"></i> Role protected</span><span><i class="bi bi-buildings"></i> Multi-branch</span><span><i class="bi bi-clock-history"></i> Auditable</span></div>
         </div>
       </section>
-
-      <section class="auth-panel">
+      <section class="auth-form-panel">
         <div class="auth-card">
-          <div class="mobile-brand">
-            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-            <strong>OctoMinds</strong>
-          </div>
-          <span class="pill"><i></i> SECURE WORKSPACE</span>
+          <div class="mobile-brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><strong>OctoMinds Inventory</strong></div>
+          <span class="pill"><i></i> SECURE INVENTORY ACCESS</span>
           <h2>Welcome back<span>.</span></h2>
-          <p class="muted">Use your registered mobile number and secure PIN to access your workspace.</p>
+          <p class="muted">Use your registered mobile number and secure PIN.</p>
           <form id="loginForm">
-            <div id="configurationNotice" class="configuration-notice hidden"><strong>Setup required</strong><span>Connect the approved Supabase and API environments before staff can sign in.</span></div>
-            <div id="phoneStage" class="credential-fields">
-              <label>Mobile number
-                <span class="phone-wrap"><span>+91</span><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="10" pattern="[6-9][0-9]{9}" placeholder="10-digit mobile number" required /></span>
-              </label>
-              <label>6-digit PIN
-                <span class="pin-wrap"><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="6" pattern="[0-9]{6}" placeholder="Enter your PIN" required /><button id="togglePin" type="button" aria-label="Show PIN">Show</button></span>
-              </label>
-            </div>
+            <div id="configurationNotice" class="configuration-notice hidden"><strong>Setup required</strong><span>Connect the approved Supabase and API environment before signing in.</span></div>
+            <label class="credential-label">Mobile number
+              <span class="phone-wrap"><span>+91</span><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="10" pattern="[6-9][0-9]{9}" placeholder="10-digit mobile number" required /></span>
+            </label>
+            <label class="credential-label">6-digit PIN
+              <span class="pin-wrap"><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="6" pattern="[0-9]{6}" placeholder="Enter your PIN" required /><button id="togglePin" type="button" aria-label="Show PIN">Show</button></span>
+            </label>
             <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" checked /> Keep me signed in</label><button class="text-button" id="forgotPin" type="button">Forgot PIN?</button></div>
-            <button id="authSubmit" class="primary-button full" type="submit">Continue securely <i class="bi bi-arrow-right"></i></button>
+            <button class="primary-button full" type="submit">Open inventory <i class="bi bi-arrow-right"></i></button>
           </form>
-          <p class="access-note"><span>✓</span> Access is limited to approved OctoMinds accounts.</p>
+          <p class="access-note"><i class="bi bi-lock"></i> Access is limited to approved OctoMinds accounts.</p>
         </div>
-        <div class="auth-footer"><span>Protected workspace</span><span>Role-based access</span><span>Activity logging</span></div>
       </section>
     </main>
 
-    <main id="appView" class="app-shell hidden">
-      <aside id="sidebar" class="sidebar">
-        <div class="sidebar-head">
-          <a class="brand brand-light" href="#overview" aria-label="OctoMinds overview">
-            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-            <span>OctoMinds</span>
-          </a>
-          <button id="closeNav" class="icon-button mobile-only" aria-label="Close navigation"><i class="bi bi-x-lg"></i></button>
-        </div>
-        <nav aria-label="Primary navigation">
-          <p class="nav-label">WORKSPACE</p>
-          <a class="nav-item active" href="#overview" data-view="Overview"><span class="nav-glyph"><i class="bi bi-grid-1x2"></i></span>Overview</a>
-          <a class="nav-item" href="#admissions" data-view="Admissions"><span class="nav-glyph"><i class="bi bi-inbox"></i></span>Admissions</a>
-          <a class="nav-item" href="#students" data-view="Students"><span class="nav-glyph"><i class="bi bi-people"></i></span>Students</a>
-          <a class="nav-item" href="#academics" data-view="Academics"><span class="nav-glyph"><i class="bi bi-journal-bookmark"></i></span>Academics</a>
-          <a class="nav-item" href="#attendance" data-view="Attendance"><span class="nav-glyph"><i class="bi bi-calendar2-check"></i></span>Attendance</a>
-          <p class="nav-label">OPERATIONS</p>
-          <a class="nav-item" href="#staff" data-view="Branches & staff"><span class="nav-glyph"><i class="bi bi-buildings"></i></span>Branches & staff</a>
-          <a class="nav-item" href="#fees" data-view="Fees"><span class="nav-glyph"><i class="bi bi-wallet2"></i></span>Fees</a>
-          <a class="nav-item" href="#inventory" data-view="Inventory"><span class="nav-glyph"><i class="bi bi-box-seam"></i></span>Inventory</a>
-          <a class="nav-item" href="#reports" data-view="Reports"><span class="nav-glyph"><i class="bi bi-bar-chart"></i></span>Reports</a>
-        </nav>
-        <div class="sidebar-help"><span><i class="bi bi-question-lg"></i></span><div><strong>Need help?</strong><small>Open the setup guide</small></div></div>
-        <button id="logoutButton" class="logout-button"><i class="bi bi-box-arrow-right"></i> Sign out</button>
+    <main id="appView" class="inventory-app hidden">
+      <aside class="inventory-sidebar">
+        <a class="brand brand-light" href="#inventory" aria-label="OctoMinds Inventory">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span>OctoMinds <small>Inventory</small></span>
+        </a>
+        <nav aria-label="Inventory navigation"><a class="nav-item active" href="#inventory"><i class="bi bi-box-seam"></i><span>Inventory control</span></a></nav>
+        <div class="sidebar-access"><span id="sidebarAvatar" class="avatar">—</span><div><strong id="sidebarName">Signed-in user</strong><small id="sidebarRole">Loading access…</small></div></div>
+        <button id="logoutButton" class="logout-button" type="button"><i class="bi bi-box-arrow-right"></i> Sign out</button>
       </aside>
-      <div id="scrim" class="scrim"></div>
 
-      <section class="workspace">
-        <header class="topbar">
-          <div class="topbar-left">
-            <button id="openNav" class="icon-button mobile-only" aria-label="Open navigation"><i class="bi bi-list"></i></button>
-            <div class="page-context"><strong>Operations</strong><small>Preschool workspace</small></div>
-          </div>
-          <div class="branch-control"><span>Branch</span><button id="branchButton">— <b>⌄</b></button></div>
-          <div class="topbar-actions">
-            <button id="searchButton" class="icon-button" aria-label="Search"><i class="bi bi-search"></i></button>
-            <button id="notificationButton" class="icon-button notification-button" aria-label="Notifications"><i class="bi bi-bell"></i><span></span></button>
-            <button id="profileButton" class="profile-button"><span class="avatar">—</span><span class="profile-copy"><strong>Signed-in user</strong><small>Loading access…</small></span><i class="bi bi-chevron-down"></i></button>
-          </div>
+      <section class="inventory-workspace">
+        <header class="inventory-topbar">
+          <div><p>OctoMinds Operations</p><strong>Inventory workspace</strong></div>
+          <div class="topbar-user"><span id="topbarBranch">All branches</span><span id="topbarAvatar" class="avatar">—</span></div>
         </header>
 
-        <div class="page-content">
-          <section class="welcome-row dashboard-hero">
-            <div><p id="todayLabel" class="date-line">TODAY</p><h1 id="pageTitle">Your OctoMinds workspace</h1><p class="muted">A clear view of your branches, people, and daily operations.</p></div>
-            <div class="welcome-actions"><span class="live-status"><i></i> Workspace online</span><button id="exportButton" class="secondary-button"><i class="bi bi-arrow-clockwise"></i> Refresh</button></div>
+        <div id="inventoryPage" class="inventory-page">
+          <section class="inventory-heading">
+            <div><p class="section-kicker">INVENTORY CONTROL</p><h1>Stock overview</h1><p class="muted">Live balances, movements, and reorder attention across approved branches.</p></div>
+            <div class="inventory-actions">
+              <select id="inventoryBranchSelect" class="branch-select" aria-label="Inventory branch"><option value="">All branches</option></select>
+              <button class="secondary-button" type="button" data-inventory-action="setup"><i class="bi bi-sliders"></i> Setup</button>
+              <button class="secondary-button" type="button" data-inventory-action="export"><i class="bi bi-download"></i> Export</button>
+              <button class="secondary-button" type="button" data-inventory-action="movement"><i class="bi bi-arrow-left-right"></i> Movement</button>
+              <button class="primary-button" type="button" data-inventory-action="item"><i class="bi bi-plus-lg"></i> Add item</button>
+            </div>
           </section>
 
-          <section class="status-strip" aria-label="Daily status">
-            <div><span class="status-icon coral"><i class="bi bi-people"></i></span><p><strong id="studentCount">—</strong><small>Active students</small></p><span class="trend neutral">Awaiting records</span></div>
-            <div><span class="status-icon teal"><i class="bi bi-calendar2-check"></i></span><p><strong id="attendanceRate">—</strong><small>Attendance today</small></p><span class="trend neutral">Awaiting records</span></div>
-            <div><span class="status-icon gold"><i class="bi bi-inbox"></i></span><p><strong id="enquiryCount">—</strong><small>Open enquiries</small></p><span class="trend neutral">Awaiting records</span></div>
-            <div><span class="status-icon blue"><i class="bi bi-wallet2"></i></span><p><strong id="feeCollection">—</strong><small>Fees collected</small></p><span class="trend neutral">Awaiting records</span></div>
+          <section class="inventory-metrics" aria-label="Inventory summary">
+            <article><span class="metric-icon teal"><i class="bi bi-box-seam"></i></span><div><small>Active items</small><strong id="inventoryActiveItems">—</strong><em>Current catalogue</em></div></article>
+            <article><span class="metric-icon gold"><i class="bi bi-exclamation-triangle"></i></span><div><small>Low stock</small><strong id="inventoryLowStock">—</strong><em>Needs attention</em></div></article>
+            <article><span class="metric-icon coral"><i class="bi bi-x-octagon"></i></span><div><small>Out of stock</small><strong id="inventoryOutOfStock">—</strong><em>Immediate action</em></div></article>
+            <article><span class="metric-icon blue"><i class="bi bi-arrow-left-right"></i></span><div><small>Movements today</small><strong id="inventoryMovementsToday">—</strong><em>Posted entries</em></div></article>
           </section>
 
-          <section class="dashboard-grid">
-            <article class="card setup-card">
-              <div class="card-head"><div><p class="section-kicker">GETTING STARTED</p><h2>Set up your workspace</h2><p class="card-subtitle">Complete the essentials before teams begin daily operations.</p></div><span class="tag teal-soft">2 OF 4 READY</span></div>
-              <div class="setup-list">
-                <div class="complete"><span><i class="bi bi-check2"></i></span><p><strong>Owner access verified</strong><small>Your secure Super Admin account is active.</small></p><em>Complete</em></div>
-                <div class="complete"><span><i class="bi bi-check2"></i></span><p><strong>Data connection established</strong><small>The production workspace is connected and protected.</small></p><em>Complete</em></div>
-                <div><span>3</span><p><strong>Add your first branch</strong><small>Create the branch profile, timings, and contact details.</small></p><em>Next</em></div>
-                <div><span>4</span><p><strong>Add staff access</strong><small>Assign people to branches with the correct roles.</small></p><em>Pending</em></div>
+          <section class="inventory-layout">
+            <article class="card inventory-catalogue-card">
+              <div class="inventory-card-head">
+                <div><p class="section-kicker">STOCK CATALOGUE</p><h2>Items and balances</h2></div>
+                <div class="inventory-tools"><label class="inventory-search"><i class="bi bi-search"></i><input id="inventorySearch" type="search" placeholder="Search name or SKU" /></label><select id="inventoryStockFilter" aria-label="Filter stock status"><option value="all">All stock</option><option value="low">Low stock</option><option value="out">Out of stock</option><option value="healthy">Healthy</option></select></div>
               </div>
+              <div class="inventory-table-wrap"><table class="inventory-table"><thead><tr><th>Item</th><th>Category</th><th>Location</th><th class="numeric">On hand</th><th>Status</th><th aria-label="Actions"></th></tr></thead><tbody id="inventoryItemsBody"><tr class="table-state-row"><td colspan="6"><div class="table-state"><span><i class="bi bi-box-seam"></i></span><strong>Inventory is ready</strong><p>Add an item, create a location, and record opening stock.</p></div></td></tr></tbody></table></div>
+              <div class="inventory-pagination"><span id="inventoryResultCount">0 items</span><div><button id="inventoryPrev" class="icon-button" disabled aria-label="Previous page"><i class="bi bi-chevron-left"></i></button><span id="inventoryPageLabel">Page 1 of 1</span><button id="inventoryNext" class="icon-button" disabled aria-label="Next page"><i class="bi bi-chevron-right"></i></button></div></div>
             </article>
-
-            <article class="card access-card">
-              <div class="card-head"><div><p class="section-kicker">YOUR ACCOUNT</p><h2>Access details</h2></div><span class="verified-badge">✓ Verified</span></div>
-              <div class="access-details">
-                <div><span>Role</span><strong id="sessionRole">Loading…</strong></div>
-                <div><span>Branch</span><strong id="sessionBranch">Loading…</strong></div>
-                <div><span>Mobile</span><strong id="sessionEmail">Loading…</strong></div>
-                <div><span>Session</span><strong class="good">Verified</strong></div>
-              </div>
-            </article>
-
-            <article class="card activity-card">
-              <div class="card-head"><div><p class="section-kicker">RECENT ACTIVITY</p><h2>Workspace activity</h2></div><span class="quiet-label">Today</span></div>
-              <div class="empty-state"><span><i class="bi bi-activity"></i></span><strong>Your activity feed starts here</strong><p>Updates from admissions, students, attendance, fees, and inventory will appear as your team begins using OctoMinds.</p></div>
-            </article>
-
-            <article class="card health-card">
-              <div class="card-head"><div><p class="section-kicker">SYSTEM STATUS</p><h2>Services</h2></div><button id="refreshHealth" class="text-button">Check again</button></div>
-              <div class="health-list"><div><span>Web application</span><strong class="good">Available</strong></div><div><span>API service</span><strong id="apiHealth">Checking…</strong></div><div><span>Authentication</span><strong id="authHealth">Checking…</strong></div><div><span>Data access</span><strong id="dataHealth">Checking…</strong></div></div>
-            </article>
+            <aside class="inventory-side-stack">
+              <article class="card attention-card"><div class="card-head"><div><p class="section-kicker">ATTENTION</p><h2>Reorder watch</h2></div><button id="viewLowStock" class="text-button" type="button">View all</button></div><div id="inventoryLowStockList" class="attention-list"><div class="mini-empty"><i class="bi bi-check2-circle"></i><strong>No alerts yet</strong><span>Low-stock items appear here.</span></div></div></article>
+              <article class="card movement-card"><div class="card-head"><div><p class="section-kicker">AUDIT TRAIL</p><h2>Recent movements</h2></div><button id="refreshInventory" class="icon-button" type="button" aria-label="Refresh inventory"><i class="bi bi-arrow-clockwise"></i></button></div><div id="inventoryMovementList" class="movement-list"><div class="mini-empty"><i class="bi bi-clock-history"></i><strong>No movements yet</strong><span>Receipts, issues, transfers, and adjustments appear here.</span></div></div></article>
+            </aside>
           </section>
         </div>
       </section>
     </main>
 
-    <aside id="profileDrawer" class="drawer" aria-hidden="true">
-      <div class="drawer-head"><h2>Your profile</h2><button id="closeDrawer" class="icon-button" aria-label="Close profile"><i class="bi bi-x-lg"></i></button></div>
-      <div class="profile-hero"><span id="drawerAvatar" class="avatar large">—</span><div><strong id="drawerName">Signed-in user</strong><small id="drawerRole">Loading access…</small></div></div>
-      <dl><div><dt>Branch</dt><dd id="drawerBranch">—</dd></div><div><dt>Mobile</dt><dd id="drawerEmail">—</dd></div><div><dt>Access</dt><dd id="drawerAccess">—</dd></div><div><dt>Session</dt><dd>Verified</dd></div></dl>
-      <button class="secondary-button full">Manage profile</button>
-    </aside>
+    <dialog id="inventoryItemDialog" class="app-dialog"><form id="inventoryItemForm" method="dialog"><div class="dialog-head"><div><p class="section-kicker">CATALOGUE</p><h2 id="inventoryItemDialogTitle">Add inventory item</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><i class="bi bi-x-lg"></i></button></div><input id="inventoryItemId" type="hidden" /><div class="form-grid"><label class="field span-2">Item name<input id="itemName" maxlength="120" placeholder="e.g. Drawing Book" required /></label><label class="field">SKU<input id="itemSku" maxlength="40" placeholder="e.g. STA-DB-001" required /></label><label class="field">Category<select id="itemCategory" required><option value="">Select category</option></select></label><label class="field">Unit<select id="itemUnit" required><option value="piece">Piece</option><option value="packet">Packet</option><option value="box">Box</option><option value="set">Set</option><option value="litre">Litre</option><option value="kilogram">Kilogram</option><option value="metre">Metre</option><option value="roll">Roll</option></select></label><label class="field">Reorder level<input id="itemReorderLevel" type="number" min="0" step="0.001" value="0" required /></label><label class="field">Standard cost (₹)<input id="itemStandardCost" type="number" min="0" step="0.01" placeholder="Optional" /></label><label class="field span-2">Description<textarea id="itemDescription" rows="3" maxlength="1000" placeholder="Optional operational notes"></textarea></label></div><p id="inventoryItemError" class="form-error hidden"></p><div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Save item</button></div></form></dialog>
+
+    <dialog id="inventoryMovementDialog" class="app-dialog"><form id="inventoryMovementForm" method="dialog"><div class="dialog-head"><div><p class="section-kicker">STOCK LEDGER</p><h2>Record stock movement</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><i class="bi bi-x-lg"></i></button></div><div class="form-grid"><label class="field">Movement<select id="movementType" required><option value="receipt">Stock receipt</option><option value="issue">Stock issue</option><option value="return_in">Return received</option><option value="transfer">Location transfer</option><option value="adjustment_gain">Adjustment gain</option><option value="adjustment_loss">Adjustment loss</option><option value="opening_balance">Opening balance</option></select></label><label class="field"><span id="movementLocationLabel">Location</span><select id="movementLocation" required><option value="">Select location</option></select></label><label id="movementDestinationField" class="field hidden">Destination<select id="movementDestination"><option value="">Select destination</option></select></label><label class="field span-2">Item<select id="movementItem" required><option value="">Select item</option></select></label><label class="field">Quantity<input id="movementQuantity" type="number" min="0.001" step="0.001" required /></label><label id="movementUnitCostField" class="field">Unit cost (₹)<input id="movementUnitCost" type="number" min="0" step="0.01" placeholder="For receipts" /></label><label class="field">Reference<input id="movementReference" maxlength="80" placeholder="Invoice / issue note" /></label><label class="field span-2">Notes<textarea id="movementNotes" rows="3" maxlength="500" placeholder="Reason or recipient"></textarea></label></div><p class="dialog-assurance"><i class="bi bi-shield-check"></i> Posted movements are permanent audit records. Corrections require a new adjustment.</p><p id="inventoryMovementError" class="form-error hidden"></p><div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Post movement</button></div></form></dialog>
+
+    <dialog id="inventorySetupDialog" class="app-dialog setup-dialog"><div class="dialog-head"><div><p class="section-kicker">INVENTORY SETTINGS</p><h2>Categories and locations</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><i class="bi bi-x-lg"></i></button></div><div class="setup-columns"><form id="inventoryCategoryForm"><h3>Add category</h3><p>Group similar catalogue items.</p><label class="field">Name<input id="categoryName" maxlength="80" placeholder="e.g. Stationery" required /></label><label class="field">Code<input id="categoryCode" maxlength="20" placeholder="e.g. STAT" required /></label><button class="primary-button full" type="submit">Add category</button></form><form id="inventoryLocationForm"><h3>Add storage location</h3><p>Track balances in a store or room.</p><label class="field">Name<input id="locationName" maxlength="80" placeholder="e.g. Main Store" required /></label><label class="field">Code<input id="locationCode" maxlength="20" placeholder="e.g. MAIN" required /></label><label class="field">Type<select id="locationType"><option value="branch_store">Branch store</option><option value="central_store">Central store</option><option value="classroom">Classroom</option><option value="daycare">Daycare</option><option value="office">Office</option></select></label><button class="primary-button full" type="submit">Add location</button></form></div><p id="inventorySetupError" class="form-error hidden"></p></dialog>
+
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js?v=premium-v1"></script>
+    <script src="/app.js?v=inventory-3"></script>
   </body>
 </html>

@@ -1,0 +1,1 @@
+"""OctoMinds inventory domain."""

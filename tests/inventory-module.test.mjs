@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
@@ -128,8 +128,28 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-inventory-v6/);
+  assert.match(serviceWorker, /octominds-inventory-v7/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
   assert.match(serviceWorker, /url\.origin !== self\.location\.origin/);
   assert.doesNotMatch(serviceWorker.match(/const SHELL = \[[^\]]+\]/)?.[0] ?? "", /config\.js/);
+});
+
+test("official OctoMinds branding is used across web and PWA surfaces", async () => {
+  const [html, manifest, css, horizontalLogo, icon192, icon512] = await Promise.all([
+    source("public/index.html"),
+    source("public/manifest.webmanifest"),
+    source("public/styles.css"),
+    stat(new URL("public/assets/octominds-logo-horizontal.png", root)),
+    stat(new URL("public/assets/octominds-icon-192.png", root)),
+    stat(new URL("public/assets/octominds-icon-512.png", root)),
+  ]);
+  assert.match(html, /octominds-logo-horizontal\.png/g);
+  assert.match(html, /octominds-icon-192\.png/);
+  assert.doesNotMatch(html, /brand-mark/);
+  assert.match(manifest, /octominds-icon-192\.png/);
+  assert.match(manifest, /octominds-icon-512\.png/);
+  assert.match(css, /\.official-logo/);
+  assert.ok(horizontalLogo.size > 10000);
+  assert.ok(icon192.size > 10000);
+  assert.ok(icon512.size > 10000);
 });

@@ -20,6 +20,15 @@ test("inventory workspace contains the production workflows", async () => {
     'id="inventoryItemForm"',
     'id="inventoryMovementForm"',
     'id="inventoryCenterForm"',
+    'id="inventoryOnboarding"',
+    'id="onboardingAction"',
+    'class="quick-actions"',
+    'data-stock-action="receipt"',
+    'data-stock-action="issue"',
+    'data-stock-action="transfer"',
+    'id="itemOpeningStock"',
+    'id="movementDialogTitle"',
+    'id="centerSetupSummary"',
     'id="movementDestination"',
     'id="inventoryCategoryForm"',
     'id="inventoryLocationForm"',
@@ -38,10 +47,18 @@ test("inventory workspace contains the production workflows", async () => {
     "inventoryStockFilter",
     "inventory/transfers",
     "inventory/centers",
+    "updateGuidance",
+    "routeInventoryAction",
+    "openMovementDialog",
+    "itemOpeningQuantity",
+    "data-stock-item",
+    "lookups.branches.length === 1",
     "exported.length < total",
   ]) assert.match(javascript, new RegExp(behavior));
 
   assert.match(css, /\.inventory-layout/);
+  assert.match(css, /\.quick-actions/);
+  assert.match(css, /\.movement-choice/);
   assert.match(css, /\.app-dialog::backdrop/);
   assert.match(css, /@media \(max-width: 440px\)/);
 });
@@ -80,8 +97,8 @@ test("center onboarding is protected and available inside inventory", async () =
   assert.match(sql, /revoke all.*anon/is);
   assert.match(router, /@router\.post\("\/centers"/);
   assert.match(router, /Role\.SUPER_ADMIN/);
-  assert.match(html, /Create center/);
-  assert.match(html, /Multi-center control/);
+  assert.match(html, /Create.*center/i);
+  assert.match(html, /multi-center stock control/i);
 });
 
 test("inventory API exposes versioned endpoints behind current-user access", async () => {
@@ -105,7 +122,7 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-inventory-v4/);
+  assert.match(serviceWorker, /octominds-inventory-v5/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
   assert.match(serviceWorker, /url\.origin !== self\.location\.origin/);
   assert.doesNotMatch(serviceWorker.match(/const SHELL = \[[^\]]+\]/)?.[0] ?? "", /config\.js/);

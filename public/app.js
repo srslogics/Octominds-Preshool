@@ -6,6 +6,7 @@ const inventoryState = { page: 1, pageSize: 25, search: '', stockStatus: 'all', 
 let session = null;
 let currentUser = null;
 let toastTimer;
+let centerFormExpanded = false;
 
 function configured() {
   return Boolean(config.supabaseUrl && config.supabaseAnonKey && config.apiBaseUrl);
@@ -164,26 +165,110 @@ function renderInventoryMetrics(data) {
   $('#inventoryMovementsToday').textContent = data.movements_today.toLocaleString('en-IN');
 }
 
+function inventoryContext() {
+  const lookups = inventoryState.lookups || { branches: [], categories: [], locations: [], items: [] };
+  const centerId = inventoryBranchId();
+  const scoped = (rows) => centerId ? rows.filter((row) => row.branch_id === centerId) : [];
+  return {
+    centerId,
+    centerCount: lookups.branches.length,
+    categories: scoped(lookups.categories),
+    locations: scoped(lookups.locations),
+    items: scoped(lookups.items),
+  };
+}
+
+function setActionState(action, disabled, title = '') {
+  const button = $(`[data-inventory-action="${action}"]`);
+  if (!button) return;
+  button.disabled = disabled;
+  button.title = title;
+}
+
+function updateGuidance() {
+  const context = inventoryContext();
+  const canWrite = canWriteInventory();
+  const hasCenter = Boolean(context.centerId);
+  const hasCategory = context.categories.length > 0;
+  const hasLocation = context.locations.length > 0;
+  const hasItem = context.items.length > 0;
+  const onboarding = $('#inventoryOnboarding');
+
+  setActionState('setup', !canWrite, canWrite ? 'Manage centers, categories, and locations' : 'Your role has read-only inventory access');
+  setActionState('item', !canWrite, !canWrite ? 'Your role has read-only inventory access' : !hasCenter || !hasCategory ? 'Opens guided setup first' : 'Add an inventory item');
+  setActionState('movement', !canWrite, !canWrite ? 'Your role has read-only inventory access' : !hasCenter || !hasItem || !hasLocation ? 'We’ll guide you through the required setup first' : 'Record stock received, issued, or transferred');
+  setActionState('export', inventoryState.total === 0, inventoryState.total === 0 ? 'Add inventory items before exporting' : 'Export this inventory view');
+  $$('[data-stock-action]').forEach((button) => {
+    button.disabled = !canWrite;
+    button.title = canWrite ? (!hasCenter || !hasItem || !hasLocation ? 'We’ll help you finish setup first' : '') : 'Your role has read-only inventory access';
+  });
+
+  ['#onboardingStepCenter', '#onboardingStepSetup', '#onboardingStepItem'].forEach((selector) => $(selector).classList.remove('complete', 'current'));
+  const action = $('#onboardingAction');
+  if (!canWrite || (hasCenter && hasCategory && hasLocation && hasItem)) {
+    onboarding.classList.add('hidden');
+    return;
+  }
+
+  onboarding.classList.remove('hidden');
+  if (!hasCenter) {
+    $('#onboardingStepCenter').classList.add('current');
+    $('#onboardingTitle').textContent = context.centerCount ? 'Choose a center to continue' : 'Create your first center';
+    $('#onboardingCopy').textContent = context.centerCount ? 'Select the center whose inventory you want to update.' : 'Start with the preschool center whose stock you want to manage.';
+    action.dataset.next = context.centerCount ? 'select-center' : 'setup';
+    action.innerHTML = `${context.centerCount ? 'Choose center' : 'Create center'} <i class="bi bi-arrow-right"></i>`;
+    return;
+  }
+
+  $('#onboardingStepCenter').classList.add('complete');
+  if (!hasCategory || !hasLocation) {
+    $('#onboardingStepSetup').classList.add('current');
+    $('#onboardingTitle').textContent = 'Finish this center’s stock setup';
+    $('#onboardingCopy').textContent = `${hasCategory ? 'Category added.' : 'Add one category.'} ${hasLocation ? 'Location added.' : 'Add one storage location.'}`;
+    action.dataset.next = 'setup';
+    action.innerHTML = `Finish setup <i class="bi bi-arrow-right"></i>`;
+    return;
+  }
+
+  $('#onboardingStepSetup').classList.add('complete');
+  $('#onboardingStepItem').classList.add('current');
+  $('#onboardingTitle').textContent = 'Add the first inventory item';
+  $('#onboardingCopy').textContent = 'Create an item now. Then record its opening balance from Movement.';
+  action.dataset.next = 'item';
+  action.innerHTML = `Add first item <i class="bi bi-arrow-right"></i>`;
+}
+
 function syncSetupAvailability() {
-  const hasCenter = Boolean(inventoryBranchId());
+  const context = inventoryContext();
+  const hasCenter = Boolean(context.centerId);
   const canCreateCenters = canManageCenters();
-  $('#inventoryCenterForm').classList.toggle('hidden', !canCreateCenters);
-  $('#inventorySetupPrerequisite').classList.toggle('hidden', hasCenter);
+  const selectedCenter = inventoryState.lookups?.branches.find((center) => center.id === context.centerId);
+  $('#selectedCenterName').textContent = selectedCenter?.name || 'Selected center';
+  $('#centerSetupSummary').classList.toggle('hidden', !hasCenter);
+  $('#addAnotherCenter').classList.toggle('hidden', !canCreateCenters);
+  $('#inventoryCenterForm').classList.toggle('hidden', !canCreateCenters || (hasCenter && !centerFormExpanded));
+  $('#inventorySetupPrerequisite').classList.toggle('hidden', hasCenter || canCreateCenters);
   ['#inventoryCategoryForm', '#inventoryLocationForm'].forEach((selector) => {
     const form = $(selector);
+    form.classList.toggle('hidden', !hasCenter);
     form.setAttribute('aria-disabled', String(!hasCenter));
     form.querySelectorAll('button, input, select, textarea').forEach((control) => { control.disabled = !hasCenter; });
   });
+  $('#setupProgressCenter').className = hasCenter ? 'complete' : 'current';
+  $('#setupProgressDetails').className = hasCenter ? ((context.categories.length && context.locations.length) ? 'complete' : 'current') : '';
+  $('#setupProgressReady').className = hasCenter && context.categories.length && context.locations.length ? 'current' : '';
+  updateGuidance();
 }
 
 function renderInventoryLookups(lookups, preferredCenterId = '') {
   inventoryState.lookups = lookups;
   const branchSelect = $('#inventoryBranchSelect');
-  const requestedCenter = preferredCenterId || branchSelect.value || currentUser?.branch_id || '';
+  const requestedCenter = preferredCenterId || branchSelect.value || currentUser?.branch_id || (lookups.branches.length === 1 ? lookups.branches[0].id : '');
   const currentBranch = lookups.branches.some((branch) => branch.id === requestedCenter) ? requestedCenter : '';
   branchSelect.innerHTML = `${currentUser?.branch_id ? '' : '<option value="">All centers</option>'}${lookups.branches.map((branch) => `<option value="${escapeHtml(branch.id)}">${escapeHtml(branch.name)}</option>`).join('')}`;
   branchSelect.value = currentBranch;
   branchSelect.disabled = Boolean(currentUser?.branch_id);
+  $('#topbarBranch').textContent = branchSelect.selectedOptions[0]?.textContent || 'All centers';
   const branchId = inventoryBranchId();
   const categories = lookups.categories.filter((category) => !branchId || category.branch_id === branchId);
   const locations = lookups.locations.filter((location) => !branchId || location.branch_id === branchId);
@@ -192,12 +277,8 @@ function renderInventoryLookups(lookups, preferredCenterId = '') {
   const locationOptions = locations.map((location) => `<option value="${escapeHtml(location.id)}">${escapeHtml(location.name)}</option>`).join('');
   $('#movementLocation').innerHTML = `<option value="">Select location</option>${locationOptions}`;
   $('#movementDestination').innerHTML = `<option value="">Select destination</option>${locationOptions}`;
+  $('#itemOpeningLocation').innerHTML = `<option value="">Select location</option>${locationOptions}`;
   $('#movementItem').innerHTML = `<option value="">Select item</option>${items.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.sku)}</option>`).join('')}`;
-  const disableWrites = !canWriteInventory();
-  $$('[data-inventory-action="item"], [data-inventory-action="movement"], [data-inventory-action="setup"]').forEach((button) => {
-    button.disabled = disableWrites;
-    button.title = disableWrites ? 'Your role has read-only inventory access' : '';
-  });
   syncSetupAvailability();
 }
 
@@ -206,12 +287,19 @@ function renderInventoryItems(data) {
   inventoryState.total = data.total;
   const body = $('#inventoryItemsBody');
   if (!data.items.length) {
-    body.innerHTML = '<tr class="table-state-row"><td colspan="6"><div class="table-state"><span><i class="bi bi-box-seam"></i></span><strong>No matching inventory items</strong><p>Add the first item or change the search and stock filters.</p></div></td></tr>';
+    const filtered = Boolean(inventoryState.search || inventoryState.stockStatus !== 'all');
+    const context = inventoryContext();
+    let title = 'No inventory items yet';
+    let copy = 'Complete the quick start above to add your first item.';
+    let action = context.centerId && context.categories.length ? 'item' : 'setup';
+    let label = context.centerId && context.categories.length ? 'Add first item' : 'Continue setup';
+    if (filtered) { title = 'No matching items'; copy = 'Try a different search or stock filter.'; action = ''; label = ''; }
+    body.innerHTML = `<tr class="table-state-row"><td colspan="6"><div class="table-state"><span><i class="bi bi-box-seam"></i></span><strong>${title}</strong><p>${copy}</p>${action && canWriteInventory() ? `<button class="text-button table-state-action" type="button" data-empty-action="${action}">${label} <i class="bi bi-arrow-right"></i></button>` : ''}</div></td></tr>`;
   } else {
     body.innerHTML = data.items.map((item) => {
       const statusLabels = { healthy: 'Healthy', low: 'Low stock', out: 'Out of stock' };
       const location = item.location_names?.length ? item.location_names.join(', ') : 'Not stocked';
-      return `<tr><td><div class="item-cell"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span><p><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.sku)}</small></p></div></td><td>${escapeHtml(item.category_name || 'Uncategorized')}</td><td>${escapeHtml(location)}</td><td class="numeric"><strong>${Number(item.quantity_on_hand).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</strong> ${escapeHtml(item.unit)}</td><td><span class="stock-badge ${escapeHtml(item.stock_status)}">${statusLabels[item.stock_status]}</span></td><td><button class="row-action" data-edit-item="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(item.name)}"><i class="bi bi-three-dots"></i></button></td></tr>`;
+      return `<tr><td><div class="item-cell"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span><p><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.sku)}</small></p></div></td><td>${escapeHtml(item.category_name || 'Uncategorized')}</td><td>${escapeHtml(location)}</td><td class="numeric"><strong>${Number(item.quantity_on_hand).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</strong> ${escapeHtml(item.unit)}</td><td><span class="stock-badge ${escapeHtml(item.stock_status)}">${statusLabels[item.stock_status]}</span></td><td><div class="row-actions"><button class="row-stock-button" data-stock-item="${escapeHtml(item.id)}"><i class="bi bi-arrow-left-right"></i> Update stock</button><button class="row-action" data-edit-item="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(item.name)}"><i class="bi bi-pencil"></i></button></div></td></tr>`;
     }).join('');
   }
   $('#inventoryResultCount').textContent = `${data.total.toLocaleString('en-IN')} item${data.total === 1 ? '' : 's'}`;
@@ -219,6 +307,7 @@ function renderInventoryItems(data) {
   $('#inventoryPageLabel').textContent = `Page ${inventoryState.page} of ${totalPages}`;
   $('#inventoryPrev').disabled = inventoryState.page <= 1;
   $('#inventoryNext').disabled = inventoryState.page >= totalPages;
+  updateGuidance();
 }
 
 function renderLowStock(items) {
@@ -284,13 +373,35 @@ function setFormBusy(form, busy) {
 }
 
 function syncMovementFields() {
-  const isTransfer = $('#movementType').value === 'transfer';
-  $('#movementLocationLabel').textContent = isTransfer ? 'Source location' : 'Location';
+  const type = $('#movementType').value;
+  const isTransfer = type === 'transfer';
+  const isAdjustment = ['adjustment_gain', 'adjustment_loss', 'return_in', 'opening_balance'].includes(type);
+  const content = {
+    receipt: ['Receive stock', 'Add stock that has arrived at this center.', 'Receiving location', 'Quantity received', 'Receive stock', 'Supplier, invoice, or other details'],
+    issue: ['Issue stock', 'Record stock given to a classroom, child, staff member, or activity.', 'Issue from', 'Quantity issued', 'Issue stock', 'Who received it and why?'],
+    transfer: ['Transfer stock', 'Move stock from one storage location to another in this center.', 'Move from', 'Quantity to move', 'Transfer stock', 'Reason for this transfer (optional)'],
+    adjustment_gain: ['Correct stock count', 'Use this only when the physical count differs from the system.', 'Location', 'Quantity to correct', 'Save correction', 'Why is the count being corrected?'],
+    adjustment_loss: ['Correct stock count', 'Use this only when the physical count differs from the system.', 'Location', 'Quantity to correct', 'Save correction', 'Why is the count being corrected?'],
+    return_in: ['Return stock', 'Add previously issued stock back into a location.', 'Return to', 'Quantity returned', 'Save return', 'Who returned it?'],
+    opening_balance: ['Set opening stock', 'Enter stock that existed before inventory tracking began.', 'Stored at', 'Opening quantity', 'Save opening stock', 'Optional note'],
+  }[type] || [];
+  $('#movementDialogTitle').textContent = content[0] || 'Update stock';
+  $('#movementDialogCopy').textContent = content[1] || '';
+  $('#movementLocationLabel').textContent = content[2] || 'Location';
+  $('#movementQuantityLabel').textContent = content[3] || 'Quantity';
+  $('#movementSubmitButton').textContent = content[4] || 'Save update';
+  $('#movementNotesLabel').textContent = type === 'issue' ? 'Issued to / purpose' : 'Notes';
+  $('#movementNotes').placeholder = content[5] || 'Optional details';
   $('#movementDestinationField').classList.toggle('hidden', !isTransfer);
   $('#movementDestination').required = isTransfer;
-  $('#movementUnitCostField').classList.toggle('hidden', isTransfer);
-  $('#movementUnitCost').disabled = isTransfer;
+  $('#movementUnitCostField').classList.toggle('hidden', !['receipt', 'opening_balance'].includes(type));
+  $('#movementUnitCost').disabled = !['receipt', 'opening_balance'].includes(type);
+  $('#movementAdjustmentField').classList.toggle('hidden', !isAdjustment);
   if (!isTransfer) $('#movementDestination').value = '';
+  $$('[data-movement-choice]').forEach((button) => {
+    const choice = button.dataset.movementChoice;
+    button.classList.toggle('active', choice === type || (choice === 'adjustment_gain' && isAdjustment));
+  });
 }
 
 async function refreshLookups(preferredCenterId = '') {
@@ -298,32 +409,84 @@ async function refreshLookups(preferredCenterId = '') {
 }
 
 $('#movementType').addEventListener('change', syncMovementFields);
+$$('[data-movement-choice]').forEach((button) => button.addEventListener('click', () => {
+  $('#movementType').value = button.dataset.movementChoice;
+  syncMovementFields();
+}));
 $$('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
 
-$$('[data-inventory-action]').forEach((button) => button.addEventListener('click', async () => {
-  const action = button.dataset.inventoryAction;
+function openSetup(message = '') {
+  syncSetupAvailability();
+  setFormError('#inventorySetupError', message);
+  if (!$('#inventorySetupDialog').open) $('#inventorySetupDialog').showModal();
+}
+
+function openItemDialog() {
+  const context = inventoryContext();
+  if (!context.centerId) return openSetup('Create or select a center before adding an item.');
+  if (!context.categories.length) return openSetup('Add one category, then you can create the item.');
+  $('#inventoryItemForm').reset();
+  $('#inventoryItemId').value = '';
+  $('#inventoryItemDialogTitle').textContent = 'Add an item';
+  $('#inventoryItemDialogCopy').textContent = 'Create the item and optionally enter the stock you already have.';
+  $('#itemOpeningStock').classList.remove('hidden');
+  $('#itemSku').disabled = false;
+  setFormError('#inventoryItemError');
+  $('#inventoryItemDialog').showModal();
+}
+
+function openMovementDialog(type = 'receipt', preferredItemId = '') {
+  const context = inventoryContext();
+  if (!context.centerId) return openSetup('Create or select a center before recording stock.');
+  if (!context.locations.length) return openSetup('Add a storage location before recording stock.');
+  if (!context.items.length) return openItemDialog();
+  $('#inventoryMovementForm').reset();
+  $('#movementType').value = type;
+  setFormError('#inventoryMovementError');
+  syncMovementFields();
+  if (preferredItemId) $('#movementItem').value = preferredItemId;
+  else if (inventoryState.items.length === 1) $('#movementItem').value = inventoryState.items[0].id;
+  $('#inventoryMovementDialog').showModal();
+}
+
+async function routeInventoryAction(action) {
   try {
     if (action === 'export') return exportInventory();
     if (!canWriteInventory()) throw new Error('Your role has read-only inventory access');
     if (!inventoryState.lookups) await refreshLookups();
-    if (action === 'setup') {
-      syncSetupAvailability();
-      setFormError('#inventorySetupError');
-      return $('#inventorySetupDialog').showModal();
-    }
-    selectedWriteBranch();
-    if (action === 'item') {
-      $('#inventoryItemForm').reset(); $('#inventoryItemId').value = ''; $('#inventoryItemDialogTitle').textContent = 'Add inventory item'; $('#itemSku').disabled = false; setFormError('#inventoryItemError');
-      return $('#inventoryItemDialog').showModal();
-    }
-    if (action === 'movement') {
-      $('#inventoryMovementForm').reset(); setFormError('#inventoryMovementError'); syncMovementFields();
-      if ($('#movementItem').options.length === 1) throw new Error('Add an inventory item before recording stock');
-      if ($('#movementLocation').options.length === 1) throw new Error('Add a storage location before recording stock');
-      return $('#inventoryMovementDialog').showModal();
-    }
+    if (action === 'setup') return openSetup();
+    if (action === 'item') return openItemDialog();
+    if (action === 'movement') return openMovementDialog('receipt');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+$$('[data-inventory-action]').forEach((button) => button.addEventListener('click', () => {
+  button.closest('details')?.removeAttribute('open');
+  routeInventoryAction(button.dataset.inventoryAction);
+}));
+$$('[data-stock-action]').forEach((button) => button.addEventListener('click', async () => {
+  try {
+    if (!canWriteInventory()) throw new Error('Your role has read-only inventory access');
+    if (!inventoryState.lookups) await refreshLookups();
+    openMovementDialog(button.dataset.stockAction);
   } catch (error) { showToast(error.message, 'error'); }
 }));
+
+$('#onboardingAction').addEventListener('click', () => {
+  const next = $('#onboardingAction').dataset.next;
+  if (next === 'select-center') {
+    $('#inventoryBranchSelect').focus();
+    showToast('Choose a center from the selector above');
+    return;
+  }
+  routeInventoryAction(next);
+});
+
+$('#addAnotherCenter').addEventListener('click', () => {
+  centerFormExpanded = true;
+  syncSetupAvailability();
+  $('#centerName').focus();
+});
 
 $('#inventoryCenterForm').addEventListener('submit', async (event) => {
   event.preventDefault(); const form = event.currentTarget; setFormBusy(form, true); setFormError('#inventorySetupError');
@@ -340,6 +503,7 @@ $('#inventoryCenterForm').addEventListener('submit', async (event) => {
       }),
     });
     form.reset();
+    centerFormExpanded = false;
     await refreshLookups(center.id);
     $('#topbarBranch').textContent = center.name;
     showToast(`${center.name} center created`);
@@ -354,8 +518,25 @@ $('#inventoryItemForm').addEventListener('submit', async (event) => {
     const itemId = $('#inventoryItemId').value;
     const payload = { category_id: $('#itemCategory').value, name: $('#itemName').value.trim(), description: $('#itemDescription').value.trim() || null, unit: $('#itemUnit').value, reorder_level: Number($('#itemReorderLevel').value), standard_cost: $('#itemStandardCost').value ? Number($('#itemStandardCost').value) : null };
     if (!itemId) { payload.branch_id = selectedWriteBranch(); payload.sku = $('#itemSku').value.trim().toUpperCase(); }
-    await apiRequest(itemId ? inventoryPath(`/items/${itemId}`) : '/api/v1/inventory/items', { method: itemId ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
-    $('#inventoryItemDialog').close(); showToast(itemId ? 'Inventory item updated' : 'Inventory item created');
+    const openingQuantity = Number($('#itemOpeningQuantity').value || 0);
+    const openingLocation = $('#itemOpeningLocation').value;
+    if (!itemId && openingQuantity > 0 && !openingLocation) throw new Error('Choose where the opening stock is stored');
+    const savedItem = await apiRequest(itemId ? inventoryPath(`/items/${itemId}`) : '/api/v1/inventory/items', { method: itemId ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+    if (!itemId && openingQuantity > 0) {
+      try {
+        await apiRequest('/api/v1/inventory/movements', {
+          method: 'POST',
+          body: JSON.stringify({ branch_id: selectedWriteBranch(), item_id: savedItem.id, location_id: openingLocation, movement_type: 'opening_balance', quantity: openingQuantity, unit_cost: payload.standard_cost, reference: 'Opening stock', notes: 'Recorded while creating item', idempotency_key: crypto.randomUUID() }),
+        });
+      } catch (error) {
+        $('#inventoryItemDialog').close();
+        inventoryState.lookups = null;
+        await loadInventory();
+        showToast(`Item saved, but opening stock needs attention: ${error.message}`, 'error');
+        return;
+      }
+    }
+    $('#inventoryItemDialog').close(); showToast(itemId ? 'Item updated' : openingQuantity > 0 ? 'Item and opening stock saved' : 'Item created');
     if (!itemId) inventoryState.lookups = null;
     await loadInventory({ keepLookups: Boolean(itemId) });
   } catch (error) { setFormError('#inventoryItemError', error.message); }
@@ -377,7 +558,8 @@ $('#inventoryMovementForm').addEventListener('submit', async (event) => {
       payload = { ...common, location_id: $('#movementLocation').value, movement_type: $('#movementType').value, unit_cost: $('#movementUnitCost').value ? Number($('#movementUnitCost').value) : null };
     }
     await apiRequest(endpoint, { method: 'POST', body: JSON.stringify(payload) });
-    $('#inventoryMovementDialog').close(); showToast(isTransfer ? 'Stock transferred' : 'Stock movement posted');
+    const successMessages = { receipt: 'Stock received', issue: 'Stock issued', adjustment_gain: 'Stock count corrected', adjustment_loss: 'Stock count corrected', return_in: 'Returned stock saved', opening_balance: 'Opening stock saved' };
+    $('#inventoryMovementDialog').close(); showToast(isTransfer ? 'Stock transferred' : successMessages[$('#movementType').value] || 'Stock updated');
     await loadInventory({ keepLookups: true });
   } catch (error) { setFormError('#inventoryMovementError', error.message); }
   finally { setFormBusy(form, false); }
@@ -396,9 +578,21 @@ $('#inventoryLocationForm').addEventListener('submit', async (event) => {
 });
 
 $('#inventoryItemsBody').addEventListener('click', (event) => {
+  const emptyAction = event.target.closest('[data-empty-action]');
+  if (emptyAction) { routeInventoryAction(emptyAction.dataset.emptyAction); return; }
+  const stockButton = event.target.closest('[data-stock-item]');
+  if (stockButton) {
+    const item = inventoryState.items.find((candidate) => candidate.id === stockButton.dataset.stockItem);
+    if (!inventoryBranchId() && item?.branch_id) {
+      $('#inventoryBranchSelect').value = item.branch_id;
+      $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'Selected center';
+      refreshLookups(item.branch_id).then(() => openMovementDialog('receipt', item.id)).catch((error) => showToast(error.message, 'error'));
+    } else openMovementDialog('receipt', stockButton.dataset.stockItem);
+    return;
+  }
   const button = event.target.closest('[data-edit-item]'); if (!button || !canWriteInventory()) return;
   const item = inventoryState.items.find((candidate) => candidate.id === button.dataset.editItem); if (!item) return;
-  $('#inventoryItemForm').reset(); $('#inventoryItemId').value = item.id; $('#inventoryItemDialogTitle').textContent = 'Edit inventory item'; $('#itemName').value = item.name; $('#itemSku').value = item.sku; $('#itemSku').disabled = true; $('#itemCategory').value = item.category_id; $('#itemUnit').value = item.unit; $('#itemReorderLevel').value = item.reorder_level; $('#itemStandardCost').value = item.standard_cost || ''; $('#itemDescription').value = item.description || ''; setFormError('#inventoryItemError'); $('#inventoryItemDialog').showModal();
+  $('#inventoryItemForm').reset(); $('#inventoryItemId').value = item.id; $('#inventoryItemDialogTitle').textContent = 'Edit item details'; $('#inventoryItemDialogCopy').textContent = 'Update the catalogue details. Use the stock buttons to change quantity.'; $('#itemOpeningStock').classList.add('hidden'); $('#itemName').value = item.name; $('#itemSku').value = item.sku; $('#itemSku').disabled = true; $('#itemCategory').value = item.category_id; $('#itemUnit').value = item.unit; $('#itemReorderLevel').value = item.reorder_level; $('#itemStandardCost').value = item.standard_cost || ''; $('#itemDescription').value = item.description || ''; setFormError('#inventoryItemError'); $('#inventoryItemDialog').showModal();
 });
 
 async function exportInventory() {
@@ -415,7 +609,7 @@ async function exportInventory() {
 let inventorySearchTimer;
 $('#inventorySearch').addEventListener('input', (event) => { clearTimeout(inventorySearchTimer); inventorySearchTimer = setTimeout(() => { inventoryState.search = event.target.value.trim(); inventoryState.page = 1; loadInventory({ keepLookups: true }); }, 320); });
 $('#inventoryStockFilter').addEventListener('change', (event) => { inventoryState.stockStatus = event.target.value; inventoryState.page = 1; loadInventory({ keepLookups: true }); });
-$('#inventoryBranchSelect').addEventListener('change', () => { inventoryState.page = 1; inventoryState.lookups = null; $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'All centers'; syncSetupAvailability(); loadInventory(); });
+$('#inventoryBranchSelect').addEventListener('change', () => { inventoryState.page = 1; inventoryState.lookups = null; centerFormExpanded = false; $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'All centers'; loadInventory(); });
 $('#inventoryPrev').addEventListener('click', () => { inventoryState.page -= 1; loadInventory({ keepLookups: true }); });
 $('#inventoryNext').addEventListener('click', () => { inventoryState.page += 1; loadInventory({ keepLookups: true }); });
 $('#refreshInventory').addEventListener('click', () => loadInventory());

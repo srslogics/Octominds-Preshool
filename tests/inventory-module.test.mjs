@@ -128,7 +128,9 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-inventory-v7/);
+  assert.match(serviceWorker, /octominds-inventory-v8/);
+  assert.match(serviceWorker, /skipWaiting/);
+  assert.match(serviceWorker, /clients\.claim/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
   assert.match(serviceWorker, /url\.origin !== self\.location\.origin/);
   assert.doesNotMatch(serviceWorker.match(/const SHELL = \[[^\]]+\]/)?.[0] ?? "", /config\.js/);

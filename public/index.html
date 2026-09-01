@@ -20,7 +20,7 @@
     <link rel="icon" href="/assets/octominds-icon-192.png" type="image/png" />
     <link rel="apple-touch-icon" href="/assets/octominds-icon-192.png" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="/styles.css?v=inventory-7" />
+    <link rel="stylesheet" href="/styles.css?v=inventory-8" />
     <title>OctoMinds Inventory</title>
   </head>
   <body>
@@ -31,18 +31,19 @@
           <span class="module-badge">Inventory</span>
         </a>
         <div class="auth-message">
-          <span class="eyebrow">MULTI-CENTER STOCK CONTROL</span>
-          <h1>Every item.<br />Every movement.<br /><em>Always accountable.</em></h1>
-          <p>One secure inventory workspace for catalogue management, live balances, transfers, low-stock alerts, and a permanent audit trail.</p>
-          <div class="auth-points"><span><i class="bi bi-shield-check"></i> Role protected</span><span><i class="bi bi-buildings"></i> Multi-center</span><span><i class="bi bi-clock-history"></i> Auditable</span></div>
+          <span class="eyebrow">INVENTORY OPERATIONS</span>
+          <h1>Every center.<br /><em>One clear stock view.</em></h1>
+          <p>Manage supplies, transfers, and reorder alerts across every OctoMinds center from one accountable workspace.</p>
+          <div class="auth-points"><span><i class="bi bi-box-seam"></i> Live stock</span><span><i class="bi bi-arrow-left-right"></i> Center transfers</span><span><i class="bi bi-shield-check"></i> Complete audit trail</span></div>
         </div>
+        <p class="auth-caption"><i class="bi bi-stars"></i> Built for simple, reliable preschool operations</p>
       </section>
       <section class="auth-form-panel">
         <div class="auth-card">
           <div class="mobile-brand"><img class="official-logo" src="/assets/octominds-logo-horizontal.png" alt="OctoMinds" /><span class="module-badge">Inventory</span></div>
-          <span class="pill"><i></i> SECURE INVENTORY ACCESS</span>
-          <h2>Welcome back<span>.</span></h2>
-          <p class="muted">Use your registered mobile number and secure PIN.</p>
+          <span class="pill"><i></i> STAFF ACCESS</span>
+          <h2>Sign in<span>.</span></h2>
+          <p class="muted">Use your registered mobile number and 6-digit PIN.</p>
           <form id="loginForm">
             <div id="configurationNotice" class="configuration-notice hidden"><strong>Setup required</strong><span>Connect the approved Supabase and API environment before signing in.</span></div>
             <label class="credential-label">Mobile number
@@ -52,7 +53,7 @@
               <span class="pin-wrap"><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="6" pattern="[0-9]{6}" placeholder="Enter your PIN" required /><button id="togglePin" type="button" aria-label="Show PIN">Show</button></span>
             </label>
             <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" checked /> Keep me signed in</label><button class="text-button" id="forgotPin" type="button">Forgot PIN?</button></div>
-            <button class="primary-button full" type="submit">Open inventory <i class="bi bi-arrow-right"></i></button>
+            <button class="primary-button full" type="submit">Continue to inventory <i class="bi bi-arrow-right"></i></button>
           </form>
           <p class="access-note"><i class="bi bi-lock"></i> Access is limited to approved OctoMinds accounts.</p>
         </div>
@@ -151,6 +152,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js?v=inventory-7"></script>
+    <script src="/app.js?v=inventory-8"></script>
   </body>
 </html>

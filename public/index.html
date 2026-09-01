@@ -4,17 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#102b35" />
-    <meta name="description" content="OctoMinds Inventory provides secure, branch-wise stock control for preschool operations." />
+    <meta name="description" content="OctoMinds Inventory provides secure, multi-center stock control for preschool operations." />
     <link rel="canonical" href="https://octominds-preshool.onrender.com/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OctoMinds Inventory" />
     <meta property="og:title" content="OctoMinds Inventory" />
-    <meta property="og:description" content="Secure, branch-wise stock control for preschool operations." />
+    <meta property="og:description" content="Secure, multi-center stock control for preschool operations." />
     <meta property="og:url" content="https://octominds-preshool.onrender.com/" />
     <meta property="og:image" content="https://octominds-preshool.onrender.com/og.png?v=inventory-3" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="OctoMinds Inventory" />
-    <meta name="twitter:description" content="Secure, branch-wise stock control for preschool operations." />
+    <meta name="twitter:description" content="Secure, multi-center stock control for preschool operations." />
     <meta name="twitter:image" content="https://octominds-preshool.onrender.com/og.png?v=inventory-3" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -33,7 +33,7 @@
           <span class="eyebrow">BRANCH-WISE STOCK CONTROL</span>
           <h1>Every item.<br />Every movement.<br /><em>Always accountable.</em></h1>
           <p>One secure inventory workspace for catalogue management, live balances, transfers, low-stock alerts, and a permanent audit trail.</p>
-          <div class="auth-points"><span><i class="bi bi-shield-check"></i> Role protected</span><span><i class="bi bi-buildings"></i> Multi-branch</span><span><i class="bi bi-clock-history"></i> Auditable</span></div>
+          <div class="auth-points"><span><i class="bi bi-shield-check"></i> Role protected</span><span><i class="bi bi-buildings"></i> Multi-center</span><span><i class="bi bi-clock-history"></i> Auditable</span></div>
         </div>
       </section>
       <section class="auth-form-panel">
@@ -72,14 +72,14 @@
       <section class="inventory-workspace">
         <header class="inventory-topbar">
           <div><p>OctoMinds Operations</p><strong>Inventory workspace</strong></div>
-          <div class="topbar-user"><span id="topbarBranch">All branches</span><span id="topbarAvatar" class="avatar">—</span></div>
+          <div class="topbar-user"><span id="topbarBranch">All centers</span><span id="topbarAvatar" class="avatar">—</span></div>
         </header>
 
         <div id="inventoryPage" class="inventory-page">
           <section class="inventory-heading">
-            <div><p class="section-kicker">INVENTORY CONTROL</p><h1>Stock overview</h1><p class="muted">Live balances, movements, and reorder attention across approved branches.</p></div>
+            <div><p class="section-kicker">MULTI-CENTER INVENTORY</p><h1>Stock overview</h1><p class="muted">Live balances, movements, and reorder attention across approved centers.</p></div>
             <div class="inventory-actions">
-              <select id="inventoryBranchSelect" class="branch-select" aria-label="Inventory branch"><option value="">All branches</option></select>
+              <select id="inventoryBranchSelect" class="branch-select" aria-label="Inventory center"><option value="">All centers</option></select>
               <button class="secondary-button" type="button" data-inventory-action="setup"><i class="bi bi-sliders"></i> Setup</button>
               <button class="secondary-button" type="button" data-inventory-action="export"><i class="bi bi-download"></i> Export</button>
               <button class="secondary-button" type="button" data-inventory-action="movement"><i class="bi bi-arrow-left-right"></i> Movement</button>
@@ -116,10 +116,10 @@
 
     <dialog id="inventoryMovementDialog" class="app-dialog"><form id="inventoryMovementForm" method="dialog"><div class="dialog-head"><div><p class="section-kicker">STOCK LEDGER</p><h2>Record stock movement</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><i class="bi bi-x-lg"></i></button></div><div class="form-grid"><label class="field">Movement<select id="movementType" required><option value="receipt">Stock receipt</option><option value="issue">Stock issue</option><option value="return_in">Return received</option><option value="transfer">Location transfer</option><option value="adjustment_gain">Adjustment gain</option><option value="adjustment_loss">Adjustment loss</option><option value="opening_balance">Opening balance</option></select></label><label class="field"><span id="movementLocationLabel">Location</span><select id="movementLocation" required><option value="">Select location</option></select></label><label id="movementDestinationField" class="field hidden">Destination<select id="movementDestination"><option value="">Select destination</option></select></label><label class="field span-2">Item<select id="movementItem" required><option value="">Select item</option></select></label><label class="field">Quantity<input id="movementQuantity" type="number" min="0.001" step="0.001" required /></label><label id="movementUnitCostField" class="field">Unit cost (₹)<input id="movementUnitCost" type="number" min="0" step="0.01" placeholder="For receipts" /></label><label class="field">Reference<input id="movementReference" maxlength="80" placeholder="Invoice / issue note" /></label><label class="field span-2">Notes<textarea id="movementNotes" rows="3" maxlength="500" placeholder="Reason or recipient"></textarea></label></div><p class="dialog-assurance"><i class="bi bi-shield-check"></i> Posted movements are permanent audit records. Corrections require a new adjustment.</p><p id="inventoryMovementError" class="form-error hidden"></p><div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Post movement</button></div></form></dialog>
 
-    <dialog id="inventorySetupDialog" class="app-dialog setup-dialog"><div class="dialog-head"><div><p class="section-kicker">INVENTORY SETTINGS</p><h2>Categories and locations</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><i class="bi bi-x-lg"></i></button></div><div class="setup-columns"><form id="inventoryCategoryForm"><h3>Add category</h3><p>Group similar catalogue items.</p><label class="field">Name<input id="categoryName" maxlength="80" placeholder="e.g. Stationery" required /></label><label class="field">Code<input id="categoryCode" maxlength="20" placeholder="e.g. STAT" required /></label><button class="primary-button full" type="submit">Add category</button></form><form id="inventoryLocationForm"><h3>Add storage location</h3><p>Track balances in a store or room.</p><label class="field">Name<input id="locationName" maxlength="80" placeholder="e.g. Main Store" required /></label><label class="field">Code<input id="locationCode" maxlength="20" placeholder="e.g. MAIN" required /></label><label class="field">Type<select id="locationType"><option value="branch_store">Branch store</option><option value="central_store">Central store</option><option value="classroom">Classroom</option><option value="daycare">Daycare</option><option value="office">Office</option></select></label><button class="primary-button full" type="submit">Add location</button></form></div><p id="inventorySetupError" class="form-error hidden"></p></dialog>
+    <dialog id="inventorySetupDialog" class="app-dialog setup-dialog"><div class="dialog-head"><div><p class="section-kicker">INVENTORY SETTINGS</p><h2>Centers, categories and locations</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><i class="bi bi-x-lg"></i></button></div><div class="setup-columns"><form id="inventoryCenterForm" class="center-setup-form"><div class="setup-form-intro"><div><h3>Add center</h3><p>Create a preschool center before configuring its stock.</p></div><span>Multi-center control</span></div><div class="center-form-grid"><label class="field">Center name<input id="centerName" maxlength="120" placeholder="e.g. Manish Nagar Center" required /></label><label class="field">Center code<input id="centerCode" maxlength="20" placeholder="e.g. MN01" required /></label><label class="field">Phone<input id="centerPhone" maxlength="30" inputmode="tel" placeholder="Optional" /></label><label class="field">Address<input id="centerAddress" maxlength="500" placeholder="Optional" /></label><button class="primary-button" type="submit">Create center</button></div></form><p id="inventorySetupPrerequisite" class="setup-prerequisite hidden"><i class="bi bi-info-circle"></i> Create or select a center to add categories and storage locations.</p><form id="inventoryCategoryForm"><h3>Add category</h3><p>Group catalogue items for the selected center.</p><label class="field">Name<input id="categoryName" maxlength="80" placeholder="e.g. Stationery" required /></label><label class="field">Code<input id="categoryCode" maxlength="20" placeholder="e.g. STAT" required /></label><button class="primary-button full" type="submit">Add category</button></form><form id="inventoryLocationForm"><h3>Add storage location</h3><p>Track balances inside the selected center.</p><label class="field">Name<input id="locationName" maxlength="80" placeholder="e.g. Main Store" required /></label><label class="field">Code<input id="locationCode" maxlength="20" placeholder="e.g. MAIN" required /></label><label class="field">Type<select id="locationType"><option value="branch_store">Center store</option><option value="central_store">Central store</option><option value="classroom">Classroom</option><option value="daycare">Daycare</option><option value="office">Office</option></select></label><button class="primary-button full" type="submit">Add location</button></form></div><p id="inventorySetupError" class="form-error hidden"></p></dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js?v=inventory-3"></script>
+    <script src="/app.js?v=inventory-4"></script>
   </body>
 </html>

@@ -32,6 +32,9 @@ class InventoryService:
         )
         return {"branches": branches, "categories": categories, "locations": locations, "items": items}
 
+    def create_center(self, data: dict[str, Any]) -> dict:
+        return self.repository.create_center(data)
+
     def list_items(self, branch_id: str | None, search: str, stock_status: str, page: int, page_size: int) -> dict:
         params: dict[str, Any] = {
             "select": "id,branch_id,category_id,name,sku,description,unit,reorder_level,standard_cost,is_active,inventory_categories(name),inventory_stock_balances(location_id,quantity_on_hand,inventory_locations(name))",

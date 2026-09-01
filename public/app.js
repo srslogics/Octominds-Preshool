@@ -80,7 +80,7 @@ async function showApplication() {
   $('#sidebarAvatar').textContent = $('#topbarAvatar').textContent = initials;
   $('#sidebarName').textContent = currentUser.full_name || 'OctoMinds user';
   $('#sidebarRole').textContent = role;
-  $('#topbarBranch').textContent = currentUser.branch_name || 'All branches';
+  $('#topbarBranch').textContent = currentUser.branch_name || 'All centers';
   $('#authView').classList.add('hidden');
   $('#appView').classList.remove('hidden');
   await loadInventory();
@@ -139,6 +139,10 @@ function canWriteInventory() {
   return ['super_admin', 'management', 'branch_admin'].includes(currentUser?.role);
 }
 
+function canManageCenters() {
+  return ['super_admin', 'management'].includes(currentUser?.role);
+}
+
 function inventoryPath(path, parameters = {}) {
   const query = new URLSearchParams();
   Object.entries(parameters).forEach(([key, value]) => { if (value !== '' && value !== null && value !== undefined) query.set(key, value); });
@@ -160,11 +164,24 @@ function renderInventoryMetrics(data) {
   $('#inventoryMovementsToday').textContent = data.movements_today.toLocaleString('en-IN');
 }
 
-function renderInventoryLookups(lookups) {
+function syncSetupAvailability() {
+  const hasCenter = Boolean(inventoryBranchId());
+  const canCreateCenters = canManageCenters();
+  $('#inventoryCenterForm').classList.toggle('hidden', !canCreateCenters);
+  $('#inventorySetupPrerequisite').classList.toggle('hidden', hasCenter);
+  ['#inventoryCategoryForm', '#inventoryLocationForm'].forEach((selector) => {
+    const form = $(selector);
+    form.setAttribute('aria-disabled', String(!hasCenter));
+    form.querySelectorAll('button, input, select, textarea').forEach((control) => { control.disabled = !hasCenter; });
+  });
+}
+
+function renderInventoryLookups(lookups, preferredCenterId = '') {
   inventoryState.lookups = lookups;
   const branchSelect = $('#inventoryBranchSelect');
-  const currentBranch = branchSelect.value || currentUser?.branch_id || '';
-  branchSelect.innerHTML = `${currentUser?.branch_id ? '' : '<option value="">All branches</option>'}${lookups.branches.map((branch) => `<option value="${escapeHtml(branch.id)}">${escapeHtml(branch.name)}</option>`).join('')}`;
+  const requestedCenter = preferredCenterId || branchSelect.value || currentUser?.branch_id || '';
+  const currentBranch = lookups.branches.some((branch) => branch.id === requestedCenter) ? requestedCenter : '';
+  branchSelect.innerHTML = `${currentUser?.branch_id ? '' : '<option value="">All centers</option>'}${lookups.branches.map((branch) => `<option value="${escapeHtml(branch.id)}">${escapeHtml(branch.name)}</option>`).join('')}`;
   branchSelect.value = currentBranch;
   branchSelect.disabled = Boolean(currentUser?.branch_id);
   const branchId = inventoryBranchId();
@@ -181,6 +198,7 @@ function renderInventoryLookups(lookups) {
     button.disabled = disableWrites;
     button.title = disableWrites ? 'Your role has read-only inventory access' : '';
   });
+  syncSetupAvailability();
 }
 
 function renderInventoryItems(data) {
@@ -251,7 +269,7 @@ async function loadInventory({ keepLookups = false } = {}) {
 
 function selectedWriteBranch() {
   const branchId = inventoryBranchId();
-  if (!branchId) throw new Error('Select a branch before changing inventory');
+  if (!branchId) throw new Error('Create or select a center before changing inventory');
   return branchId;
 }
 
@@ -275,8 +293,8 @@ function syncMovementFields() {
   if (!isTransfer) $('#movementDestination').value = '';
 }
 
-async function refreshLookups() {
-  renderInventoryLookups(await apiRequest(inventoryPath('/lookups')));
+async function refreshLookups(preferredCenterId = '') {
+  renderInventoryLookups(await apiRequest(inventoryPath('/lookups')), preferredCenterId);
 }
 
 $('#movementType').addEventListener('change', syncMovementFields);
@@ -287,9 +305,13 @@ $$('[data-inventory-action]').forEach((button) => button.addEventListener('click
   try {
     if (action === 'export') return exportInventory();
     if (!canWriteInventory()) throw new Error('Your role has read-only inventory access');
-    selectedWriteBranch();
     if (!inventoryState.lookups) await refreshLookups();
-    if (action === 'setup') return $('#inventorySetupDialog').showModal();
+    if (action === 'setup') {
+      syncSetupAvailability();
+      setFormError('#inventorySetupError');
+      return $('#inventorySetupDialog').showModal();
+    }
+    selectedWriteBranch();
     if (action === 'item') {
       $('#inventoryItemForm').reset(); $('#inventoryItemId').value = ''; $('#inventoryItemDialogTitle').textContent = 'Add inventory item'; $('#itemSku').disabled = false; setFormError('#inventoryItemError');
       return $('#inventoryItemDialog').showModal();
@@ -302,6 +324,29 @@ $$('[data-inventory-action]').forEach((button) => button.addEventListener('click
     }
   } catch (error) { showToast(error.message, 'error'); }
 }));
+
+$('#inventoryCenterForm').addEventListener('submit', async (event) => {
+  event.preventDefault(); const form = event.currentTarget; setFormBusy(form, true); setFormError('#inventorySetupError');
+  try {
+    if (!canManageCenters()) throw new Error('Only Super Admin or Management can create centers');
+    const center = await apiRequest('/api/v1/inventory/centers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: $('#centerName').value.trim(),
+        code: $('#centerCode').value.trim().toUpperCase(),
+        phone: $('#centerPhone').value.trim() || null,
+        address: $('#centerAddress').value.trim() || null,
+        timezone: 'Asia/Kolkata',
+      }),
+    });
+    form.reset();
+    await refreshLookups(center.id);
+    $('#topbarBranch').textContent = center.name;
+    showToast(`${center.name} center created`);
+    await loadInventory({ keepLookups: true });
+  } catch (error) { setFormError('#inventorySetupError', error.message); }
+  finally { setFormBusy(form, false); syncSetupAvailability(); }
+});
 
 $('#inventoryItemForm').addEventListener('submit', async (event) => {
   event.preventDefault(); const form = event.currentTarget; setFormBusy(form, true); setFormError('#inventoryItemError');
@@ -370,7 +415,7 @@ async function exportInventory() {
 let inventorySearchTimer;
 $('#inventorySearch').addEventListener('input', (event) => { clearTimeout(inventorySearchTimer); inventorySearchTimer = setTimeout(() => { inventoryState.search = event.target.value.trim(); inventoryState.page = 1; loadInventory({ keepLookups: true }); }, 320); });
 $('#inventoryStockFilter').addEventListener('change', (event) => { inventoryState.stockStatus = event.target.value; inventoryState.page = 1; loadInventory({ keepLookups: true }); });
-$('#inventoryBranchSelect').addEventListener('change', () => { inventoryState.page = 1; inventoryState.lookups = null; $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'All branches'; loadInventory(); });
+$('#inventoryBranchSelect').addEventListener('change', () => { inventoryState.page = 1; inventoryState.lookups = null; $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'All centers'; syncSetupAvailability(); loadInventory(); });
 $('#inventoryPrev').addEventListener('click', () => { inventoryState.page -= 1; loadInventory({ keepLookups: true }); });
 $('#inventoryNext').addEventListener('click', () => { inventoryState.page += 1; loadInventory({ keepLookups: true }); });
 $('#refreshInventory').addEventListener('click', () => loadInventory());

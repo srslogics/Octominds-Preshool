@@ -63,6 +63,16 @@ class InventoryRepository:
             raise InventoryError("inventory_write_failed", "The inventory record was not created", 500)
         return payload[0]
 
+    def create_center(self, data: dict[str, Any]) -> dict:
+        payload, _ = self._request(
+            "POST",
+            "/rpc/create_inventory_center",
+            json={f"p_{key}": value for key, value in data.items()},
+        )
+        if not payload:
+            raise InventoryError("inventory_write_failed", "The center was not created", 500)
+        return payload[0]
+
     def update_item(self, item_id: str, data: dict[str, Any]) -> dict:
         payload, _ = self._request(
             "PATCH",

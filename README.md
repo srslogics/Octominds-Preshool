@@ -1,12 +1,13 @@
 # OctoMinds Inventory
 
-Production inventory control for OctoMinds preschool branches.
+Production multi-center inventory control for OctoMinds preschool operations.
 
 ## Included
 
 - Secure mobile-number and PIN sign-in through Supabase Auth
-- Role and branch access for Super Admin, Management, Branch Admin, and Accountant
-- Branch-wise categories, storage locations, and item catalogue
+- Role and center access for Super Admin, Management, Center Admin, and Accountant
+- Center onboarding inside Inventory Setup
+- Center-wise categories, storage locations, and item catalogue
 - Opening balances, receipts, issues, returns, and adjustments
 - Atomic transfers between locations
 - Live stock balances and weighted average cost
@@ -56,7 +57,7 @@ python3 -m compileall -q api
 2. Apply both migrations to staging and complete acceptance testing.
 3. Apply the inventory migration to production.
 4. Deploy the Render service.
-5. Create categories and locations for each branch.
+5. Create centers, categories, and locations from Inventory Setup.
 6. Import the item catalogue and post verified opening balances.
 
 Detailed module architecture is in `docs/inventory-system-design.md`.

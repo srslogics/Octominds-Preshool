@@ -14,6 +14,27 @@ class MovementType(StrEnum):
     ADJUSTMENT_LOSS = "adjustment_loss"
 
 
+class CenterCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    code: str = Field(min_length=2, max_length=20, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]+$")
+    address: str | None = Field(default=None, max_length=500)
+    phone: str | None = Field(default=None, max_length=30)
+    timezone: str = Field(default="Asia/Kolkata", min_length=3, max_length=80)
+
+    @field_validator("name", "address", "phone", mode="before")
+    @classmethod
+    def trim_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        return value.strip().upper()
+
+
 class CategoryCreate(BaseModel):
     branch_id: UUID
     name: str = Field(min_length=2, max_length=80)

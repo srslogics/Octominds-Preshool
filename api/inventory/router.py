@@ -5,13 +5,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials
 
-from ..auth import CurrentUser, bearer, get_current_user
+from ..auth import CurrentUser, Role, bearer, get_current_user
 from ..config import Settings, get_settings
 from .errors import InventoryError
 from .permissions import resolve_branch
 from .repository import InventoryRepository
 from .schemas import (
     CategoryCreate,
+    CenterCreate,
     InventoryDashboard,
     ItemCreate,
     ItemListResponse,
@@ -43,6 +44,22 @@ def _raise_domain_error(error: InventoryError, request: Request) -> None:
         status_code=error.status_code,
         detail={"code": error.code, "message": error.message, "request_id": request_id},
     ) from error
+
+
+@router.post("/centers", status_code=201)
+def create_center(
+    payload: CenterCreate,
+    request: Request,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    if user.role not in {Role.SUPER_ADMIN, Role.MANAGEMENT}:
+        raise HTTPException(status_code=403, detail="Only Super Admin or Management can create centers")
+    try:
+        return _service(credentials, settings).create_center(_json(payload.model_dump()))
+    except InventoryError as error:
+        _raise_domain_error(error, request)
 
 
 @router.get("/dashboard", response_model=InventoryDashboard)

@@ -19,6 +19,7 @@ test("inventory workspace contains the production workflows", async () => {
     'id="inventoryPage"',
     'id="inventoryItemForm"',
     'id="inventoryMovementForm"',
+    'id="inventoryCenterForm"',
     'id="movementDestination"',
     'id="inventoryCategoryForm"',
     'id="inventoryLocationForm"',
@@ -36,6 +37,7 @@ test("inventory workspace contains the production workflows", async () => {
     "canWriteInventory",
     "inventoryStockFilter",
     "inventory/transfers",
+    "inventory/centers",
     "exported.length < total",
   ]) assert.match(javascript, new RegExp(behavior));
 
@@ -65,6 +67,23 @@ test("inventory migration protects integrity and branch access", async () => {
   assert.match(sql, /enable row level security/gi);
 });
 
+test("center onboarding is protected and available inside inventory", async () => {
+  const [sql, router, html] = await Promise.all([
+    source("supabase/migrations/202609010001_inventory_center_setup.sql"),
+    source("api/inventory/router.py"),
+    source("public/index.html"),
+  ]);
+  assert.match(sql, /create_inventory_center/i);
+  assert.match(sql, /security definer/i);
+  assert.match(sql, /super_admin.*management/is);
+  assert.match(sql, /grant execute.*authenticated/is);
+  assert.match(sql, /revoke all.*anon/is);
+  assert.match(router, /@router\.post\("\/centers"/);
+  assert.match(router, /Role\.SUPER_ADMIN/);
+  assert.match(html, /Create center/);
+  assert.match(html, /Multi-center control/);
+});
+
 test("inventory API exposes versioned endpoints behind current-user access", async () => {
   const [router, permissions, main, config] = await Promise.all([
     source("api/inventory/router.py"),
@@ -77,7 +96,7 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
   assert.match(router, /@router\.post\("\/movements"/);
   assert.match(router, /@router\.post\("\/transfers"/);
   assert.match(permissions, /INVENTORY_WRITE_ROLES/);
-  assert.match(permissions, /Requested branch is outside your access/);
+  assert.match(permissions, /Requested center is outside your access/);
   assert.match(main, /include_router\(inventory_router\)/);
   assert.match(router, /response_model=LookupResponse/);
   assert.match(config, /SUPABASE_ANON_KEY is required in production/);
@@ -86,7 +105,7 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-inventory-v3/);
+  assert.match(serviceWorker, /octominds-inventory-v4/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
   assert.match(serviceWorker, /url\.origin !== self\.location\.origin/);
   assert.doesNotMatch(serviceWorker.match(/const SHELL = \[[^\]]+\]/)?.[0] ?? "", /config\.js/);

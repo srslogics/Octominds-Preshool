@@ -17,6 +17,8 @@ test("inventory workspace contains the production workflows", async () => {
 
   for (const marker of [
     'id="inventoryPage"',
+    'class="app-header"',
+    'class="inventory-hero"',
     'id="inventoryItemForm"',
     'id="inventoryMovementForm"',
     'id="inventoryCenterForm"',
@@ -52,6 +54,7 @@ test("inventory workspace contains the production workflows", async () => {
     "openMovementDialog",
     "itemOpeningQuantity",
     "data-stock-item",
+    "inventory-data-row",
     "lookups.branches.length === 1",
     "exported.length < total",
   ]) assert.match(javascript, new RegExp(behavior));
@@ -59,6 +62,9 @@ test("inventory workspace contains the production workflows", async () => {
   assert.match(css, /\.inventory-layout/);
   assert.match(css, /\.quick-actions/);
   assert.match(css, /\.movement-choice/);
+  assert.match(css, /\.app-header/);
+  assert.match(css, /\.inventory-hero/);
+  assert.match(css, /attr\(data-label\)/);
   assert.match(css, /\.app-dialog::backdrop/);
   assert.match(css, /@media \(max-width: 440px\)/);
 });
@@ -122,7 +128,7 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-inventory-v5/);
+  assert.match(serviceWorker, /octominds-inventory-v6/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
   assert.match(serviceWorker, /url\.origin !== self\.location\.origin/);
   assert.doesNotMatch(serviceWorker.match(/const SHELL = \[[^\]]+\]/)?.[0] ?? "", /config\.js/);

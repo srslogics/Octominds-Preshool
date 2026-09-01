@@ -19,7 +19,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="/styles.css?v=inventory-5" />
+    <link rel="stylesheet" href="/styles.css?v=inventory-6" />
     <title>OctoMinds Inventory</title>
   </head>
   <body>
@@ -59,30 +59,38 @@
     </main>
 
     <main id="appView" class="inventory-app hidden">
-      <aside class="inventory-sidebar">
-        <a class="brand brand-light" href="#inventory" aria-label="OctoMinds Inventory">
+      <header class="app-header">
+        <a class="brand app-brand" href="#inventory" aria-label="OctoMinds Inventory">
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <span>OctoMinds <small>Inventory</small></span>
         </a>
-        <nav aria-label="Inventory navigation"><a class="nav-item active" href="#inventory"><i class="bi bi-box-seam"></i><span>Inventory control</span></a></nav>
-        <div class="sidebar-access"><span id="sidebarAvatar" class="avatar">—</span><div><strong id="sidebarName">Signed-in user</strong><small id="sidebarRole">Loading access…</small></div></div>
-        <button id="logoutButton" class="logout-button" type="button"><i class="bi bi-box-arrow-right"></i> Sign out</button>
-      </aside>
+        <div class="app-header-context"><span class="live-dot"></span><div><small>Current view</small><strong id="topbarBranch">All centers</strong></div></div>
+        <div class="header-profile"><span id="sidebarAvatar" class="avatar">—</span><div class="header-profile-copy"><strong id="sidebarName">Signed-in user</strong><small id="sidebarRole">Loading access…</small></div><button id="logoutButton" class="header-logout" type="button" aria-label="Sign out"><i class="bi bi-box-arrow-right"></i><span>Sign out</span></button></div>
+        <span id="topbarAvatar" class="hidden" aria-hidden="true">—</span>
+      </header>
 
       <section class="inventory-workspace">
-        <header class="inventory-topbar">
-          <div><p>OctoMinds Operations</p><strong>Inventory workspace</strong></div>
-          <div class="topbar-user"><span id="topbarBranch">All centers</span><span id="topbarAvatar" class="avatar">—</span></div>
-        </header>
 
         <div id="inventoryPage" class="inventory-page">
-          <section class="inventory-heading">
-            <div><p class="section-kicker">MULTI-CENTER INVENTORY</p><h1>Stock overview</h1><p class="muted">See what is available and take the next action without leaving this screen.</p></div>
-            <div class="center-switcher">
-              <label for="inventoryBranchSelect"><span>Working center</span><small>Choose where this stock belongs</small></label>
-              <select id="inventoryBranchSelect" class="branch-select" aria-label="Working center"><option value="">All centers</option></select>
-              <details class="more-menu"><summary aria-label="More inventory options"><i class="bi bi-three-dots"></i></summary><div><button type="button" data-inventory-action="setup"><i class="bi bi-gear"></i> Manage centers &amp; setup</button><button type="button" data-inventory-action="export"><i class="bi bi-download"></i> Export inventory</button></div></details>
+          <section class="inventory-hero">
+            <div class="inventory-heading">
+              <div><p class="section-kicker">INVENTORY CONTROL</p><h1>Everything in stock,<br />clear at a glance.</h1><p class="muted">Track quantities, receive supplies, issue materials, and move stock across every OctoMinds center.</p></div>
+              <div class="center-switcher">
+                <label for="inventoryBranchSelect"><span>Viewing inventory for</span><small>Select a center before updating stock</small></label>
+                <select id="inventoryBranchSelect" class="branch-select" aria-label="Inventory center"><option value="">All centers</option></select>
+                <details class="more-menu"><summary aria-label="More inventory options"><i class="bi bi-three-dots"></i></summary><div><button type="button" data-inventory-action="setup"><i class="bi bi-gear"></i> Centers &amp; setup</button><button type="button" data-inventory-action="export"><i class="bi bi-download"></i> Export inventory</button></div></details>
+              </div>
             </div>
+
+            <section class="quick-actions" aria-labelledby="quickActionsTitle">
+              <div class="quick-actions-copy"><p class="section-kicker">QUICK ACTIONS</p><h2 id="quickActionsTitle">What would you like to do?</h2><p>Choose an action and enter only the required details.</p></div>
+              <div class="quick-action-buttons">
+                <button class="quick-action receive" type="button" data-stock-action="receipt"><i class="bi bi-box-arrow-in-down"></i><span><strong>Receive</strong><small>Add arriving stock</small></span><i class="bi bi-chevron-right action-arrow"></i></button>
+                <button class="quick-action issue" type="button" data-stock-action="issue"><i class="bi bi-box-arrow-up"></i><span><strong>Issue</strong><small>Record stock used</small></span><i class="bi bi-chevron-right action-arrow"></i></button>
+                <button class="quick-action transfer" type="button" data-stock-action="transfer"><i class="bi bi-arrow-left-right"></i><span><strong>Transfer</strong><small>Move between stores</small></span><i class="bi bi-chevron-right action-arrow"></i></button>
+                <button class="quick-action add" type="button" data-inventory-action="item"><i class="bi bi-plus-lg"></i><span><strong>New item</strong><small>Add to catalogue</small></span><i class="bi bi-chevron-right action-arrow"></i></button>
+              </div>
+            </section>
           </section>
 
           <section id="inventoryOnboarding" class="onboarding-card" aria-live="polite">
@@ -96,16 +104,6 @@
               <li id="onboardingStepItem"><span>3</span><div><strong>First item</strong><small>Add opening stock</small></div></li>
             </ol>
             <button id="onboardingAction" class="primary-button" type="button">Start setup <i class="bi bi-arrow-right"></i></button>
-          </section>
-
-          <section class="quick-actions" aria-labelledby="quickActionsTitle">
-            <div class="quick-actions-copy"><p class="section-kicker">QUICK ACTIONS</p><h2 id="quickActionsTitle">What do you want to do?</h2><p>Choose an action. We’ll ask only for the details needed.</p></div>
-            <div class="quick-action-buttons">
-              <button class="quick-action receive" type="button" data-stock-action="receipt"><i class="bi bi-box-arrow-in-down"></i><span><strong>Receive stock</strong><small>Items coming in</small></span></button>
-              <button class="quick-action issue" type="button" data-stock-action="issue"><i class="bi bi-box-arrow-up"></i><span><strong>Issue stock</strong><small>Items being used</small></span></button>
-              <button class="quick-action transfer" type="button" data-stock-action="transfer"><i class="bi bi-arrow-left-right"></i><span><strong>Transfer stock</strong><small>Move between locations</small></span></button>
-              <button class="quick-action add" type="button" data-inventory-action="item"><i class="bi bi-plus-lg"></i><span><strong>Add new item</strong><small>Create catalogue item</small></span></button>
-            </div>
           </section>
 
           <section class="inventory-metrics" aria-label="Inventory summary">
@@ -152,6 +150,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js?v=inventory-5"></script>
+    <script src="/app.js?v=inventory-6"></script>
   </body>
 </html>

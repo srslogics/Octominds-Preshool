@@ -124,7 +124,13 @@ def get_current_user(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except (jwt.PyJWTError, httpx.HTTPError, KeyError, ValueError) as exc:
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code >= 500 or exc.response.status_code == 429:
+            raise HTTPException(status_code=503, detail="Authentication service is temporarily unavailable") from exc
+        raise HTTPException(status_code=401, detail="Invalid access token") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Authentication service is temporarily unavailable") from exc
+    except (jwt.PyJWTError, KeyError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token") from exc
 
 

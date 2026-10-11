@@ -12,7 +12,7 @@ test("inventory workspace contains the production workflows", async () => {
   const [html, javascript, css] = await Promise.all([
     source("public/index.html"),
     source("public/app.js"),
-    source("public/styles.css"),
+    source("public/workspace.css"),
   ]);
 
   for (const marker of [
@@ -66,7 +66,7 @@ test("inventory workspace contains the production workflows", async () => {
   assert.match(css, /\.inventory-hero/);
   assert.match(css, /attr\(data-label\)/);
   assert.match(css, /\.app-dialog::backdrop/);
-  assert.match(css, /@media \(max-width: 440px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*700px\)/);
 });
 
 test("inventory migration protects integrity and branch access", async () => {
@@ -128,7 +128,7 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-inventory-v8/);
+  assert.match(serviceWorker, /octominds-inventory-v10/);
   assert.match(serviceWorker, /skipWaiting/);
   assert.match(serviceWorker, /clients\.claim/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
@@ -140,7 +140,7 @@ test("official OctoMinds branding is used across web and PWA surfaces", async ()
   const [html, manifest, css, horizontalLogo, icon192, icon512] = await Promise.all([
     source("public/index.html"),
     source("public/manifest.webmanifest"),
-    source("public/styles.css"),
+    source("public/workspace.css"),
     stat(new URL("public/assets/octominds-logo-horizontal.png", root)),
     stat(new URL("public/assets/octominds-icon-192.png", root)),
     stat(new URL("public/assets/octominds-icon-512.png", root)),

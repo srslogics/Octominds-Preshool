@@ -123,8 +123,8 @@ class InventoryService:
     def create_item(self, data: dict[str, Any], user_id: str) -> dict:
         return self.repository.create_row("inventory_items", {**data, "created_by": user_id})
 
-    def update_item(self, item_id: str, data: dict[str, Any]) -> dict:
-        return self.repository.update_item(item_id, {**data, "updated_at": datetime.now(UTC).isoformat()})
+    def update_item(self, item_id: str, branch_id: str, data: dict[str, Any]) -> dict:
+        return self.repository.update_item(item_id, branch_id, {**data, "updated_at": datetime.now(UTC).isoformat()})
 
     def post_movement(self, data: dict[str, Any]) -> dict:
         rpc_data = {f"p_{key}": value for key, value in data.items()}

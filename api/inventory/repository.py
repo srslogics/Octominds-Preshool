@@ -28,14 +28,26 @@ class InventoryRepository:
         except httpx.HTTPError as exc:
             raise InventoryError("inventory_service_unavailable", "Inventory data service is temporarily unavailable", 503) from exc
         if response.status_code >= 400:
-            payload = response.json() if response.content else {}
+            try:
+                payload = response.json() if response.content else {}
+            except ValueError:
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            if response.status_code >= 500 or response.status_code == 429:
+                raise InventoryError("inventory_service_unavailable", "Inventory data service is temporarily unavailable", 503)
             server_message = str(payload.get("message") or payload.get("details") or "")
             mapping = {
                 "insufficient_stock": ("insufficient_stock", "There is not enough stock for this movement", 409),
                 "inventory_access_denied": ("inventory_access_denied", "You do not have permission to change this inventory", 403),
                 "inventory_item_not_found": ("inventory_item_not_found", "The selected inventory item is unavailable", 404),
                 "inventory_location_not_found": ("inventory_location_not_found", "The selected inventory location is unavailable", 404),
-                "opening_balance_already_exists": ("opening_balance_already_exists", "Opening balance can only be posted when current stock is zero", 409),
+                "opening_balance_already_exists": ("opening_balance_already_exists", "Opening balance is only available before the first movement at this location", 409),
+                "inventory_unit_has_history": ("inventory_unit_has_history", "The unit cannot change after stock has been recorded. Create a new item for a different unit", 409),
+                "inventory_item_has_stock": ("inventory_item_has_stock", "Move or issue all remaining stock before archiving this item", 409),
+                "inventory_idempotency_conflict": ("inventory_idempotency_conflict", "This command was already used for different stock details. Refresh before continuing", 409),
+                "invalid_inventory_cost": ("invalid_inventory_cost", "Enter a valid non-negative cost", 422),
+                "invalid_inventory_idempotency_key": ("invalid_inventory_idempotency_key", "A valid command identifier is required", 422),
                 "inventory_transfer_same_location": ("inventory_transfer_same_location", "Choose a different destination location", 422),
                 "use_inventory_transfer_command": ("use_inventory_transfer_command", "Location transfers must use the transfer workflow", 422),
             }
@@ -45,7 +57,10 @@ class InventoryRepository:
             if response.status_code == 409 or payload.get("code") == "23505":
                 raise InventoryError("inventory_conflict", "This inventory code or SKU already exists", 409)
             raise InventoryError("inventory_request_failed", "The inventory request could not be completed", min(response.status_code, 500))
-        payload = response.json() if response.content else None
+        try:
+            payload = response.json() if response.content else None
+        except ValueError as exc:
+            raise InventoryError("inventory_invalid_response", "Inventory data service returned an invalid response", 502) from exc
         return payload, response.headers
 
     def list_rows(self, table: str, params: dict[str, Any]) -> tuple[list[dict], int]:
@@ -73,11 +88,11 @@ class InventoryRepository:
             raise InventoryError("inventory_write_failed", "The center was not created", 500)
         return payload[0]
 
-    def update_item(self, item_id: str, data: dict[str, Any]) -> dict:
+    def update_item(self, item_id: str, branch_id: str, data: dict[str, Any]) -> dict:
         payload, _ = self._request(
             "PATCH",
             "/inventory_items",
-            params={"id": f"eq.{item_id}"},
+            params={"id": f"eq.{item_id}", "branch_id": f"eq.{branch_id}"},
             json=data,
             prefer="return=representation",
         )

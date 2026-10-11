@@ -34,8 +34,8 @@ def _service(credentials: HTTPAuthorizationCredentials, settings: Settings) -> I
     return InventoryService(InventoryRepository(settings, credentials.credentials))
 
 
-def _json(data: dict) -> dict:
-    return {key: str(value) if isinstance(value, (UUID, Decimal)) else value for key, value in data.items() if value is not None}
+def _json(data: dict, *, keep_nulls: bool = False) -> dict:
+    return {key: str(value) if isinstance(value, (UUID, Decimal)) else value for key, value in data.items() if keep_nulls or value is not None}
 
 
 def _raise_domain_error(error: InventoryError, request: Request) -> None:
@@ -166,9 +166,12 @@ def update_item(
     settings: Annotated[Settings, Depends(get_settings)],
     branch_id: UUID | None = None,
 ):
-    resolve_branch(user, branch_id, write=True)
+    branch = resolve_branch(user, branch_id, write=True)
     try:
-        return _service(credentials, settings).update_item(str(item_id), _json(payload.model_dump(exclude_unset=True)))
+        changes = payload.model_dump(exclude_unset=True)
+        if any(value is None and key not in {"description", "standard_cost"} for key, value in changes.items()):
+            raise HTTPException(status_code=422, detail="Only description and standard cost may be cleared")
+        return _service(credentials, settings).update_item(str(item_id), branch, _json(changes, keep_nulls=True))
     except InventoryError as error:
         _raise_domain_error(error, request)
 

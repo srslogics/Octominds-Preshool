@@ -1,12 +1,19 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const config = window.OCTOMINDS_CONFIG || {};
+$('#inventoryItemDialog').setAttribute('aria-labelledby', 'inventoryItemDialogTitle');
+$('#inventoryMovementDialog').setAttribute('aria-labelledby', 'movementDialogTitle');
+$('#inventorySetupDialog h2').id = 'inventorySetupDialogTitle';
+$('#inventorySetupDialog').setAttribute('aria-labelledby', 'inventorySetupDialogTitle');
 const SESSION_KEY = 'octominds.inventory.session';
 const inventoryState = { page: 1, pageSize: 25, search: '', stockStatus: 'all', items: [], total: 0, lookups: null, loading: false };
 let session = null;
 let currentUser = null;
 let toastTimer;
 let centerFormExpanded = false;
+let inventoryLoadVersion = 0;
+let movementAttempt = null;
+let refreshInFlight = null;
 
 function configured() {
   return Boolean(config.supabaseUrl && config.supabaseAnonKey && config.apiBaseUrl);
@@ -31,20 +38,51 @@ async function supabaseRequest(path, options = {}) {
     headers: { apikey: config.supabaseAnonKey, 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error_description || payload.msg || payload.message || 'Authentication request failed');
+  if (!response.ok) {
+    const error = new Error(payload.error_description || payload.msg || payload.message || 'Authentication request failed');
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
-async function apiRequest(path, options = {}) {
+async function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight;
+  const previous = session;
+  if (!previous?.refresh_token) { clearSession(); showLogin(); throw new Error('Please sign in again'); }
+  const task = (async () => {
+    try {
+      const refreshed = await supabaseRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: previous.refresh_token }) });
+      if (session !== previous) throw new Error('Session changed. Please try again');
+      saveSession(refreshed, Boolean(localStorage.getItem(SESSION_KEY)));
+    } catch (error) {
+      if (session === previous && [400,401,403].includes(error.status)) { clearSession(); showLogin(); }
+      throw error;
+    }
+  })();
+  refreshInFlight = task;
+  try { await task; } finally { if (refreshInFlight === task) refreshInFlight = null; }
+}
+
+async function apiRequest(path, options = {}, canRetry = true) {
   if (!session?.access_token) throw new Error('Authentication required');
+  if (canRetry && session.expires_at && session.expires_at * 1000 <= Date.now() + 30000) await refreshAccessToken();
+  const token = session?.access_token;
+  if (!token) throw new Error('Please sign in again');
   const response = await fetch(`${config.apiBaseUrl}${path}`, {
     ...options,
-    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 401 && session?.access_token === token) {
+    if (canRetry) { await refreshAccessToken(); return apiRequest(path, options, false); }
+    clearSession(); showLogin(); throw new Error('Your session has expired. Please sign in again');
+  }
+  if (response.status === 401 && canRetry && session?.access_token) return apiRequest(path, options, false);
   if (!response.ok) {
     const detail = payload.detail;
-    throw new Error((typeof detail === 'object' && detail?.message) || detail || 'Inventory request failed');
+    const message = Array.isArray(detail) ? detail.map((entry) => entry.msg || 'Invalid field').join('; ') : (typeof detail === 'object' ? detail?.message : detail);
+    throw new Error(message || 'Inventory request failed');
   }
   return payload;
 }
@@ -57,8 +95,25 @@ function saveSession(value, persistent) {
 }
 
 function clearSession() {
+  inventoryLoadVersion += 1;
+  setInventoryLoading(false);
   session = null;
   currentUser = null;
+  inventoryState.items = [];
+  inventoryState.lookups = null;
+  inventoryState.page = 1;
+  inventoryState.search = '';
+  inventoryState.stockStatus = 'all';
+  $('#inventoryBranchSelect').value = '';
+  $('#inventorySearch').value = '';
+  $('#inventoryStockFilter').value = 'all';
+  refreshInFlight = null;
+  movementAttempt = null;
+  $('#loginForm').reset();
+  $('#pin').type = 'password';
+  $('#togglePin').textContent = 'Show';
+  $('#togglePin').setAttribute('aria-label', 'Show PIN');
+  $$('dialog[open]').forEach((dialog) => dialog.close());
   sessionStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(SESSION_KEY);
 }
@@ -130,7 +185,18 @@ $('#togglePin').addEventListener('click', () => {
 });
 
 $('#forgotPin').addEventListener('click', () => showToast('Ask an OctoMinds administrator to reset your PIN'));
-$('#logoutButton').addEventListener('click', () => { clearSession(); showLogin(); showToast('Signed out safely'); });
+$('#logoutButton').addEventListener('click', async () => {
+  const token = session?.access_token;
+  clearSession(); showLogin();
+  localStorage.setItem(`${SESSION_KEY}.logout`, crypto.randomUUID());
+  try {
+    if (token) await supabaseRequest('/logout?scope=local', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    showToast('Signed out safely');
+  } catch { showToast('Signed out on this device. The server could not be reached to revoke the session.', 'error'); }
+});
+window.addEventListener('storage', (event) => {
+  if (event.key === `${SESSION_KEY}.logout`) { clearSession(); showLogin(); }
+});
 
 function inventoryBranchId() {
   return $('#inventoryBranchSelect')?.value || currentUser?.branch_id || '';
@@ -154,6 +220,7 @@ function inventoryPath(path, parameters = {}) {
 
 function setInventoryLoading(loading) {
   inventoryState.loading = loading;
+  $('#stockCatalogue').setAttribute('aria-busy', String(loading));
   $('#refreshInventory').disabled = loading;
   $('#refreshInventory i').classList.toggle('spin', loading);
 }
@@ -179,10 +246,10 @@ function inventoryContext() {
 }
 
 function setActionState(action, disabled, title = '') {
-  const button = $(`[data-inventory-action="${action}"]`);
-  if (!button) return;
-  button.disabled = disabled;
-  button.title = title;
+  $$(`[data-inventory-action="${action}"]`).forEach((button) => {
+    button.disabled = disabled;
+    button.title = title;
+  });
 }
 
 function updateGuidance() {
@@ -205,7 +272,7 @@ function updateGuidance() {
 
   ['#onboardingStepCenter', '#onboardingStepSetup', '#onboardingStepItem'].forEach((selector) => $(selector).classList.remove('complete', 'current'));
   const action = $('#onboardingAction');
-  if (!canWrite || (hasCenter && hasCategory && hasLocation && hasItem)) {
+  if (!canWrite || (hasCenter && hasCategory && hasLocation && hasItem) || (!hasCenter && context.centerCount && inventoryState.total > 0)) {
     onboarding.classList.add('hidden');
     return;
   }
@@ -285,6 +352,12 @@ function renderInventoryLookups(lookups, preferredCenterId = '') {
 function renderInventoryItems(data) {
   inventoryState.items = data.items;
   inventoryState.total = data.total;
+  $('#clearInventoryFilters').classList.toggle('hidden', !inventoryState.search && inventoryState.stockStatus === 'all');
+  $$('.workspace-nav [data-stock-filter]').forEach((link) => {
+    const active = link.dataset.stockFilter === inventoryState.stockStatus;
+    link.classList.toggle('active', active);
+    if (active) link.setAttribute('aria-current', 'true'); else link.removeAttribute('aria-current');
+  });
   const body = $('#inventoryItemsBody');
   if (!data.items.length) {
     const filtered = Boolean(inventoryState.search || inventoryState.stockStatus !== 'all');
@@ -302,6 +375,10 @@ function renderInventoryItems(data) {
       return `<tr class="inventory-data-row"><td data-label="Item"><div class="item-cell"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span><p><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.sku)}</small></p></div></td><td data-label="Category">${escapeHtml(item.category_name || 'Uncategorized')}</td><td data-label="Location">${escapeHtml(location)}</td><td data-label="On hand" class="numeric"><strong>${Number(item.quantity_on_hand).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</strong> ${escapeHtml(item.unit)}</td><td data-label="Status"><span class="stock-badge ${escapeHtml(item.stock_status)}">${statusLabels[item.stock_status]}</span></td><td data-label="Actions"><div class="row-actions"><button class="row-stock-button" data-stock-item="${escapeHtml(item.id)}"><i class="bi bi-arrow-left-right"></i> Update stock</button><button class="row-action" data-edit-item="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(item.name)}"><i class="bi bi-pencil"></i></button></div></td></tr>`;
     }).join('');
   }
+  body.querySelectorAll('[data-stock-item], [data-edit-item]').forEach((button) => {
+    button.classList.toggle('hidden', !canWriteInventory());
+    button.disabled = !canWriteInventory();
+  });
   $('#inventoryResultCount').textContent = `${data.total.toLocaleString('en-IN')} item${data.total === 1 ? '' : 's'}`;
   const totalPages = Math.max(1, Math.ceil(data.total / inventoryState.pageSize));
   $('#inventoryPageLabel').textContent = `Page ${inventoryState.page} of ${totalPages}`;
@@ -313,7 +390,7 @@ function renderInventoryItems(data) {
 function renderLowStock(items) {
   const list = $('#inventoryLowStockList');
   if (!items.length) {
-    list.innerHTML = '<div class="mini-empty"><i class="bi bi-check2-circle"></i><strong>Stock levels look healthy</strong><span>No low-stock items in this view.</span></div>';
+    list.innerHTML = '<div class="mini-empty"><i class="bi bi-check2-circle"></i><strong>No restock alerts</strong><span>No low-stock or out-of-stock items in this view.</span></div>';
     return;
   }
   list.innerHTML = items.slice(0, 5).map((item) => `<button class="attention-item" type="button" data-filter-item="${escapeHtml(item.name)}"><span class="attention-dot ${escapeHtml(item.stock_status)}"></span><p><strong>${escapeHtml(item.name)}</strong><small>${Number(item.quantity_on_hand).toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${escapeHtml(item.unit)} remaining</small></p><i class="bi bi-chevron-right"></i></button>`).join('');
@@ -334,7 +411,8 @@ function renderMovements(data) {
 }
 
 async function loadInventory({ keepLookups = false } = {}) {
-  if (inventoryState.loading || !session?.access_token) return;
+  if (!session?.access_token) return;
+  const version = ++inventoryLoadVersion;
   setInventoryLoading(true);
   try {
     const requests = [
@@ -342,18 +420,28 @@ async function loadInventory({ keepLookups = false } = {}) {
       apiRequest(inventoryPath('/items', { search: inventoryState.search, stock_status: inventoryState.stockStatus, page: inventoryState.page, page_size: inventoryState.pageSize })),
       apiRequest(inventoryPath('/movements', { limit: 12 })),
       apiRequest(inventoryPath('/items', { stock_status: 'low', page: 1, page_size: 5 })),
+      apiRequest(inventoryPath('/items', { stock_status: 'out', page: 1, page_size: 5 })),
     ];
     if (!keepLookups || !inventoryState.lookups) requests.push(apiRequest(inventoryPath('/lookups')));
-    const [dashboard, items, movements, attention, lookups] = await Promise.all(requests);
+    const [dashboard, items, movements, attention, outOfStock, lookups] = await Promise.all(requests);
+    if (version !== inventoryLoadVersion || !session) return;
     if (lookups) renderInventoryLookups(lookups);
     renderInventoryMetrics(dashboard);
     renderInventoryItems(items);
     renderMovements(movements);
-    renderLowStock(attention.items);
+    renderLowStock([...outOfStock.items, ...attention.items]);
   } catch (error) {
+    if (version !== inventoryLoadVersion || !session) return;
     showToast(error.message, 'error');
-    $('#inventoryItemsBody').innerHTML = `<tr class="table-state-row"><td colspan="6"><div class="table-state error-state"><span><i class="bi bi-exclamation-triangle"></i></span><strong>Inventory could not be loaded</strong><p>${escapeHtml(error.message)}.</p></div></td></tr>`;
-  } finally { setInventoryLoading(false); }
+    inventoryState.items = [];
+    ['inventoryActiveItems', 'inventoryLowStock', 'inventoryOutOfStock', 'inventoryMovementsToday'].forEach(id => { document.getElementById(id).textContent = '—'; });
+    $('#inventoryResultCount').textContent = 'Unavailable';
+    $('#inventoryPageLabel').textContent = '—';
+    $('#inventoryPrev').disabled = true;
+    $('#inventoryNext').disabled = true;
+    ['inventoryMovementList', 'inventoryLowStockList'].forEach(id => { document.getElementById(id).innerHTML = '<div class="mini-empty"><strong>Temporarily unavailable</strong><span>Retry loading inventory to refresh this panel.</span></div>'; });
+    $('#inventoryItemsBody').innerHTML = `<tr class="table-state-row"><td colspan="6"><div class="table-state error-state" role="alert"><span><i class="bi bi-exclamation-triangle"></i></span><strong>Inventory could not be loaded</strong><p>${escapeHtml(error.message)}</p><button type="button" class="secondary-button" data-retry-inventory>Try again</button></div></td></tr>`;
+  } finally { if (version === inventoryLoadVersion) setInventoryLoading(false); }
 }
 
 function selectedWriteBranch() {
@@ -366,6 +454,7 @@ function setFormError(selector, message = '') {
   const element = $(selector);
   element.textContent = message;
   element.classList.toggle('hidden', !message);
+  element.setAttribute('role', 'alert');
 }
 
 function setFormBusy(form, busy) {
@@ -436,11 +525,13 @@ function openItemDialog() {
 }
 
 function openMovementDialog(type = 'receipt', preferredItemId = '') {
+  if (!canWriteInventory()) return showToast('Your account has read-only inventory access');
   const context = inventoryContext();
   if (!context.centerId) return openSetup('Create or select a center before recording stock.');
   if (!context.locations.length) return openSetup('Add a storage location before recording stock.');
   if (!context.items.length) return openItemDialog();
   $('#inventoryMovementForm').reset();
+  movementAttempt = null;
   $('#movementType').value = type;
   setFormError('#inventoryMovementError');
   syncMovementFields();
@@ -546,7 +637,7 @@ $('#inventoryItemForm').addEventListener('submit', async (event) => {
 $('#inventoryMovementForm').addEventListener('submit', async (event) => {
   event.preventDefault(); const form = event.currentTarget; setFormBusy(form, true); setFormError('#inventoryMovementError');
   try {
-    const common = { branch_id: selectedWriteBranch(), item_id: $('#movementItem').value, quantity: Number($('#movementQuantity').value), reference: $('#movementReference').value.trim() || null, notes: $('#movementNotes').value.trim() || null, idempotency_key: crypto.randomUUID() };
+    const common = { branch_id: selectedWriteBranch(), item_id: $('#movementItem').value, quantity: Number($('#movementQuantity').value), reference: $('#movementReference').value.trim() || null, notes: $('#movementNotes').value.trim() || null };
     const isTransfer = $('#movementType').value === 'transfer';
     let endpoint = '/api/v1/inventory/movements';
     let payload;
@@ -557,7 +648,13 @@ $('#inventoryMovementForm').addEventListener('submit', async (event) => {
     } else {
       payload = { ...common, location_id: $('#movementLocation').value, movement_type: $('#movementType').value, unit_cost: $('#movementUnitCost').value ? Number($('#movementUnitCost').value) : null };
     }
+    const fingerprint = JSON.stringify({ endpoint, payload });
+    if (!movementAttempt || movementAttempt.fingerprint !== fingerprint) {
+      movementAttempt = { fingerprint, key: crypto.randomUUID() };
+    }
+    payload.idempotency_key = movementAttempt.key;
     await apiRequest(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+    movementAttempt = null;
     const successMessages = { receipt: 'Stock received', issue: 'Stock issued', adjustment_gain: 'Stock count corrected', adjustment_loss: 'Stock count corrected', return_in: 'Returned stock saved', opening_balance: 'Opening stock saved' };
     $('#inventoryMovementDialog').close(); showToast(isTransfer ? 'Stock transferred' : successMessages[$('#movementType').value] || 'Stock updated');
     await loadInventory({ keepLookups: true });
@@ -577,11 +674,14 @@ $('#inventoryLocationForm').addEventListener('submit', async (event) => {
   catch (error) { setFormError('#inventorySetupError', error.message); } finally { setFormBusy(form, false); }
 });
 
-$('#inventoryItemsBody').addEventListener('click', (event) => {
+$('#inventoryItemsBody').addEventListener('click', async (event) => {
+  if (event.target.closest('[data-retry-inventory]')) { await loadInventory(); return; }
+  if (inventoryState.loading) return;
   const emptyAction = event.target.closest('[data-empty-action]');
   if (emptyAction) { routeInventoryAction(emptyAction.dataset.emptyAction); return; }
   const stockButton = event.target.closest('[data-stock-item]');
   if (stockButton) {
+    if (!canWriteInventory()) return showToast('Your account has read-only inventory access');
     const item = inventoryState.items.find((candidate) => candidate.id === stockButton.dataset.stockItem);
     if (!inventoryBranchId() && item?.branch_id) {
       $('#inventoryBranchSelect').value = item.branch_id;
@@ -592,6 +692,12 @@ $('#inventoryItemsBody').addEventListener('click', (event) => {
   }
   const button = event.target.closest('[data-edit-item]'); if (!button || !canWriteInventory()) return;
   const item = inventoryState.items.find((candidate) => candidate.id === button.dataset.editItem); if (!item) return;
+  if (!inventoryBranchId() && item.branch_id) {
+    $('#inventoryBranchSelect').value = item.branch_id;
+    $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'Selected center';
+    try { await refreshLookups(item.branch_id); await loadInventory({ keepLookups: true }); }
+    catch (error) { showToast(error.message, 'error'); return; }
+  }
   $('#inventoryItemForm').reset(); $('#inventoryItemId').value = item.id; $('#inventoryItemDialogTitle').textContent = 'Edit item details'; $('#inventoryItemDialogCopy').textContent = 'Update the catalogue details. Use the stock buttons to change quantity.'; $('#itemOpeningStock').classList.add('hidden'); $('#itemName').value = item.name; $('#itemSku').value = item.sku; $('#itemSku').disabled = true; $('#itemCategory').value = item.category_id; $('#itemUnit').value = item.unit; $('#itemReorderLevel').value = item.reorder_level; $('#itemStandardCost').value = item.standard_cost || ''; $('#itemDescription').value = item.description || ''; setFormError('#inventoryItemError'); $('#inventoryItemDialog').showModal();
 });
 
@@ -607,14 +713,27 @@ async function exportInventory() {
 }
 
 let inventorySearchTimer;
+function applyStockFilter(status, clearSearch = true) {
+  clearTimeout(inventorySearchTimer);
+  inventoryState.stockStatus = status;
+  inventoryState.page = 1;
+  $('#inventoryStockFilter').value = status;
+  if (clearSearch) { inventoryState.search = ''; $('#inventorySearch').value = ''; }
+  loadInventory({ keepLookups: true });
+}
+$$('[data-stock-filter]').forEach((control) => control.addEventListener('click', () => {
+  applyStockFilter(control.dataset.stockFilter);
+  if (control.tagName === 'BUTTON') $('#stockCatalogue').scrollIntoView({ block: 'start' });
+}));
+$('#clearInventoryFilters').addEventListener('click', () => applyStockFilter('all'));
 $('#inventorySearch').addEventListener('input', (event) => { clearTimeout(inventorySearchTimer); inventorySearchTimer = setTimeout(() => { inventoryState.search = event.target.value.trim(); inventoryState.page = 1; loadInventory({ keepLookups: true }); }, 320); });
 $('#inventoryStockFilter').addEventListener('change', (event) => { inventoryState.stockStatus = event.target.value; inventoryState.page = 1; loadInventory({ keepLookups: true }); });
 $('#inventoryBranchSelect').addEventListener('change', () => { inventoryState.page = 1; inventoryState.lookups = null; centerFormExpanded = false; $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'All centers'; loadInventory(); });
 $('#inventoryPrev').addEventListener('click', () => { inventoryState.page -= 1; loadInventory({ keepLookups: true }); });
 $('#inventoryNext').addEventListener('click', () => { inventoryState.page += 1; loadInventory({ keepLookups: true }); });
 $('#refreshInventory').addEventListener('click', () => loadInventory());
-$('#viewLowStock').addEventListener('click', () => { $('#inventoryStockFilter').value = 'low'; inventoryState.stockStatus = 'low'; inventoryState.page = 1; loadInventory({ keepLookups: true }); });
-$('#inventoryLowStockList').addEventListener('click', (event) => { const item = event.target.closest('[data-filter-item]'); if (!item) return; $('#inventorySearch').value = item.dataset.filterItem; inventoryState.search = item.dataset.filterItem; loadInventory({ keepLookups: true }); });
+$('#viewLowStock').addEventListener('click', () => { applyStockFilter('low'); $('#stockCatalogue').scrollIntoView({ block: 'start' }); });
+$('#inventoryLowStockList').addEventListener('click', (event) => { const item = event.target.closest('[data-filter-item]'); if (!item) return; clearTimeout(inventorySearchTimer); $('#inventorySearch').value = item.dataset.filterItem; inventoryState.search = item.dataset.filterItem; inventoryState.stockStatus = 'all'; $('#inventoryStockFilter').value = 'all'; inventoryState.page = 1; loadInventory({ keepLookups: true }); $('#stockCatalogue').scrollIntoView({ block: 'start' }); });
 
 if (!configured()) $('#configurationNotice').classList.remove('hidden');
 restoreSession();

@@ -1,5 +1,5 @@
-const CACHE = 'octominds-inventory-v10';
-const SHELL = ['/', '/index.html', '/workspace.css?v=inventory-10', '/app.js?v=inventory-10', '/manifest.webmanifest'];
+const CACHE = 'octominds-inventory-v11';
+const SHELL = ['/', '/index.html', '/workspace.css?v=inventory-10', '/operations.css?v=inventory-11', '/app.js?v=inventory-10', '/manifest.webmanifest'];
 self.addEventListener('install', (event) => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   await cache.addAll(SHELL);

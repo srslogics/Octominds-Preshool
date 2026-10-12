@@ -35,7 +35,7 @@ class InventoryService:
     def create_center(self, data: dict[str, Any]) -> dict:
         return self.repository.create_center(data)
 
-    def list_items(self, branch_id: str | None, search: str, stock_status: str, page: int, page_size: int) -> dict:
+    def list_items(self, branch_id: str | None, search: str, stock_status: str, page: int, page_size: int, item_id: str | None = None) -> dict:
         params: dict[str, Any] = {
             "select": "id,branch_id,category_id,name,sku,description,unit,reorder_level,standard_cost,is_active,inventory_categories(name),inventory_stock_balances(location_id,quantity_on_hand,inventory_locations(name))",
             "is_active": "eq.true",
@@ -45,6 +45,8 @@ class InventoryService:
         }
         if branch_id:
             params["branch_id"] = f"eq.{branch_id}"
+        if item_id:
+            params["id"] = f"eq.{item_id}"
         if search:
             safe_search = search.replace("%", "").replace(",", " ").strip()[:80]
             params["or"] = f"(name.ilike.*{safe_search}*,sku.ilike.*{safe_search}*)"
@@ -66,6 +68,7 @@ class InventoryService:
                 "quantity_on_hand": quantity,
                 "stock_status": status,
                 "location_names": locations,
+                "balances": balances,
             }
             if stock_status == "all" or stock_status == status:
                 items.append(item)
@@ -99,14 +102,19 @@ class InventoryService:
                 low_stock += 1
         return {"active_items": len(items), "low_stock": low_stock, "out_of_stock": out_of_stock, "movements_today": movement_count}
 
-    def list_movements(self, branch_id: str | None, limit: int) -> dict:
+    def list_movements(self, branch_id: str | None, limit: int, offset: int = 0, movement_type: str = "all") -> dict:
         params: dict[str, Any] = {
             "select": "id,branch_id,movement_type,quantity,signed_quantity,quantity_after,reference,notes,posted_at,inventory_items(name,sku,unit),inventory_locations(name)",
             "order": "posted_at.desc",
             "limit": limit,
+            "offset": offset,
         }
         if branch_id:
             params["branch_id"] = f"eq.{branch_id}"
+        if movement_type == "transfer":
+            params["movement_type"] = "in.(transfer_in,transfer_out)"
+        elif movement_type != "all":
+            params["movement_type"] = f"eq.{movement_type}"
         rows, total = self.repository.list_rows("inventory_movements", params)
         for row in rows:
             item = row.pop("inventory_items", {}) or {}

@@ -156,6 +156,25 @@ def create_item(
         _raise_domain_error(error, request)
 
 
+@router.get("/items/{item_id}")
+def get_item(
+    item_id: UUID,
+    request: Request,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    branch_id: UUID | None = None,
+):
+    branch = resolve_branch(user, branch_id)
+    try:
+        result = _service(credentials, settings).list_items(branch, "", "all", 1, 1, str(item_id))
+        if not result["items"]:
+            raise HTTPException(status_code=404, detail="Item not found or not accessible")
+        return result["items"][0]
+    except InventoryError as error:
+        _raise_domain_error(error, request)
+
+
 @router.patch("/items/{item_id}")
 def update_item(
     item_id: UUID,
@@ -214,9 +233,11 @@ def list_movements(
     settings: Annotated[Settings, Depends(get_settings)],
     branch_id: UUID | None = None,
     limit: int = Query(default=12, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    movement_type: Literal["all", "receipt", "issue", "opening_balance", "return_in", "adjustment_gain", "adjustment_loss", "transfer"] = "all",
 ):
     branch = resolve_branch(user, branch_id)
     try:
-        return _service(credentials, settings).list_movements(branch, limit)
+        return _service(credentials, settings).list_movements(branch, limit, offset, movement_type)
     except InventoryError as error:
         _raise_domain_error(error, request)

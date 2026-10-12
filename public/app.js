@@ -95,6 +95,7 @@ function saveSession(value, persistent) {
 }
 
 function clearSession() {
+  document.dispatchEvent(new Event('inventory:logout'));
   inventoryLoadVersion += 1;
   setInventoryLoading(false);
   session = null;
@@ -139,6 +140,7 @@ async function showApplication() {
   $('#topbarBranch').textContent = currentUser.branch_name || 'All centers';
   $('#authView').classList.add('hidden');
   $('#appView').classList.remove('hidden');
+  if (typeof renderRoute === 'function') renderRoute();
   await loadInventory();
 }
 
@@ -430,10 +432,12 @@ async function loadInventory({ keepLookups = false } = {}) {
     renderInventoryItems(items);
     renderMovements(movements);
     renderLowStock([...outOfStock.items, ...attention.items]);
+    document.dispatchEvent(new Event('inventory:loaded'));
   } catch (error) {
     if (version !== inventoryLoadVersion || !session) return;
     showToast(error.message, 'error');
     inventoryState.items = [];
+    document.dispatchEvent(new CustomEvent('inventory:error', { detail: error.message }));
     ['inventoryActiveItems', 'inventoryLowStock', 'inventoryOutOfStock', 'inventoryMovementsToday'].forEach(id => { document.getElementById(id).textContent = '—'; });
     $('#inventoryResultCount').textContent = 'Unavailable';
     $('#inventoryPageLabel').textContent = '—';
@@ -701,10 +705,10 @@ $('#inventoryItemsBody').addEventListener('click', async (event) => {
   $('#inventoryItemForm').reset(); $('#inventoryItemId').value = item.id; $('#inventoryItemDialogTitle').textContent = 'Edit item details'; $('#inventoryItemDialogCopy').textContent = 'Update the catalogue details. Use the stock buttons to change quantity.'; $('#itemOpeningStock').classList.add('hidden'); $('#itemName').value = item.name; $('#itemSku').value = item.sku; $('#itemSku').disabled = true; $('#itemCategory').value = item.category_id; $('#itemUnit').value = item.unit; $('#itemReorderLevel').value = item.reorder_level; $('#itemStandardCost').value = item.standard_cost || ''; $('#itemDescription').value = item.description || ''; setFormError('#inventoryItemError'); $('#inventoryItemDialog').showModal();
 });
 
-async function exportInventory() {
+async function exportInventory({ search = inventoryState.search, stockStatus = inventoryState.stockStatus } = {}) {
   try {
     const exported = []; let page = 1; let total = 0;
-    do { const result = await apiRequest(inventoryPath('/items', { search: inventoryState.search, stock_status: inventoryState.stockStatus, page, page_size: 100 })); exported.push(...result.items); total = result.total; page += 1; } while (exported.length < total);
+    do { const result = await apiRequest(inventoryPath('/items', { search, stock_status: stockStatus, page, page_size: 100 })); exported.push(...result.items); total = result.total; page += 1; if (!result.items.length && exported.length < total) throw new Error('Export was interrupted. Please retry.'); } while (exported.length < total);
     if (!exported.length) return showToast('There are no inventory items to export');
     const rows = [['SKU', 'Item', 'Category', 'Locations', 'Quantity', 'Unit', 'Status'], ...exported.map((item) => [item.sku, item.name, item.category_name || '', (item.location_names || []).join('; '), item.quantity_on_hand, item.unit, item.stock_status])];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');

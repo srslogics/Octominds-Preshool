@@ -6,6 +6,16 @@ Production sign-off is pending. See `docs/audits/2026-10-11-inventory-audit.md` 
 
 ## Included
 
+## Workspace screens
+
+The signed-in application has bookmarkable hash routes: `/#/overview`, `/#/items`, `/#/items/<id>`, `/#/movements`, `/#/transfers`, `/#/centers`, `/#/reports`, and `/#/settings`. Browser back/forward and refresh preserve the requested screen. Authentication is still required for all data.
+
+Movement history supports server-side pagination and type filtering. Transfers are between locations within one center, not between centers. Reports currently provide stock-balance CSV exports; account settings display assigned access, with PIN administration remaining an administrator task. Creation/editing uses focused forms opened from its relevant screen.
+
+Run `tests/inventory-pages.cjs` with Playwright, axe-core, a local static server, `TEST_APP_ORIGIN`, and `CHROME_PATH` as needed. Tests use synthetic API data, never live stock writes.
+
+## Capabilities
+
 - Secure mobile-number and PIN sign-in through Supabase Auth
 - Role and center access for Super Admin, Management, Center Admin, and Accountant
 - Center onboarding inside Inventory Setup

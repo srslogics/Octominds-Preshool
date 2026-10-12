@@ -31,7 +31,7 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
    return r.fulfill({json:{items:filtered,total:filtered.length,page:1,page_size:25}});
  });
 
- await page.goto(ORIGIN);
+ await page.goto(ORIGIN+'/#/items');
  async function signIn(){
    await page.locator('#phone').fill('9999999999');
    await page.locator('#pin').fill('123456');
@@ -45,7 +45,8 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
  await page.locator('#inventoryItemForm button[type=submit]').click();
  await page.locator('#inventoryItemDialog').waitFor({state:'hidden'});
  console.log('PASS: All centers edit selects the item center and saves');
- await page.locator('[data-stock-action="receipt"]').click();
+ await page.locator('[data-page="movements"]').click();
+ await page.locator('[data-page-stock="receipt"]').click();
  await page.locator('#movementLocation').selectOption('locA');
  await page.locator('#movementQuantity').fill('3');
  failMovement=true;
@@ -58,7 +59,7 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
  console.log('PASS: retry preserves command idempotency key');
  await page.waitForFunction(()=>!document.querySelector('#refreshInventory').disabled);
  delay=true;
- await page.locator('#refreshInventory').click();
+ await page.evaluate(()=>loadInventory());
  await page.locator('#inventoryBranchSelect').selectOption(B);
  await page.waitForFunction(()=>document.querySelector('#inventoryItemsBody').textContent.includes('Center B crayons'));
  assert.equal(await page.locator('#inventoryBranchSelect').inputValue(),B);
@@ -80,7 +81,7 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
  console.log('PASS: read-only account cannot open stock-write dialog');
  requests=[];
  await page.evaluate(()=>{session.expires_at=Math.floor(Date.now()/1000)-1;});
- await page.locator('#refreshInventory').click();
+ await page.evaluate(()=>loadInventory());
  await page.waitForFunction(()=>!document.querySelector('#refreshInventory').disabled);
  assert.equal(requests.filter(x=>x.includes('grant_type=refresh_token')).length,1);
  console.log('PASS: parallel expired requests share one session refresh');
@@ -88,7 +89,7 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  console.log('PASS: tablet dashboard does not overflow horizontally');
  rejectAuth=true;
- await page.locator('#refreshInventory').click();
+ await page.evaluate(()=>loadInventory());
  await page.locator('#authView').waitFor({state:'visible'});
  assert.equal(await page.locator('#pin').inputValue(),'');
  console.log('PASS: rejected refreshed session returns safely to sign-in');

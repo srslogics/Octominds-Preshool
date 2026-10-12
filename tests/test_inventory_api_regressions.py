@@ -17,6 +17,22 @@ from api.inventory.service import InventoryService
 
 
 class InventoryRegressions(unittest.TestCase):
+    def test_history_pagination_and_transfer_filter(self):
+        repository = InventoryRepository(self.settings(), 'test')
+        with patch.object(repository, 'list_rows', return_value=([], 0)) as rows:
+            InventoryService(repository).list_movements('center', 25, 50, 'transfer')
+        params = rows.call_args.args[1]
+        self.assertEqual(params['offset'], 50)
+        self.assertEqual(params['branch_id'], 'eq.center')
+        self.assertEqual(params['movement_type'], 'in.(transfer_in,transfer_out)')
+
+    def test_item_details_keep_center_scope(self):
+        repository = InventoryRepository(self.settings(), 'test')
+        with patch.object(repository, 'list_rows', return_value=([], 0)) as rows:
+            InventoryService(repository).list_items('center', '', 'all', 1, 1, 'item')
+        self.assertEqual(rows.call_args.args[1]['id'], 'eq.item')
+        self.assertEqual(rows.call_args.args[1]['branch_id'], 'eq.center')
+
     def settings(self):
         return Settings(_env_file=None, supabase_anon_key='test-public-key')
 

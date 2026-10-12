@@ -1,0 +1,2 @@
+@media(max-width:960px){.workspace-nav{display:flex!important;flex-wrap:wrap;min-width:0}.workspace-nav a{flex:1 0 auto}.directory-grid{grid-template-columns:1fr}.page-toolbar{justify-content:flex-start}}
+.workspace-rail{overflow-y:auto}.inventory-layout:has(>#stockCatalogue.hidden){display:block}.inventory-layout:has(>#stockCatalogue.hidden) .inventory-side-stack{width:100%}

@@ -129,7 +129,10 @@ function userInitials(name) {
 }
 
 async function showApplication() {
-  currentUser = await apiRequest('/api/v1/session');
+  const expectedSession = session;
+  const verifiedUser = await apiRequest('/api/v1/session');
+  if (!session || (session !== expectedSession && session.user?.id !== expectedSession?.user?.id)) return;
+  currentUser = verifiedUser;
   const allowed = ['super_admin', 'management', 'branch_admin', 'accountant'];
   if (!allowed.includes(currentUser.role)) throw new Error('Inventory access is not assigned to this account');
   const role = currentUser.role_label || currentUser.role.replaceAll('_', ' ');
@@ -146,6 +149,7 @@ async function showApplication() {
 
 async function signInWithPin(phone, pin, persistent) {
   const nationalNumber = phone.replace(/\D/g, '').slice(-10);
+  if (!/^[6-9][0-9]{9}$/.test(nationalNumber) || !/^[0-9]{6}$/.test(pin)) throw new Error('Enter your mobile number and 6-digit PIN');
   const loginEmail = `${nationalNumber}@auth.octominds.invalid`;
   const value = await supabaseRequest('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: loginEmail, password: pin }) });
   saveSession(value, persistent);
@@ -153,10 +157,10 @@ async function signInWithPin(phone, pin, persistent) {
 }
 
 async function restoreSession() {
-  if (!configured()) return;
-  const stored = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-  if (!stored) return;
   try {
+    if (!configured()) return;
+    const stored = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
+    if (!stored) return;
     session = JSON.parse(stored);
     if (session.expires_at && session.expires_at * 1000 <= Date.now() && session.refresh_token) {
       const refreshed = await supabaseRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: session.refresh_token }) });
@@ -164,6 +168,10 @@ async function restoreSession() {
     }
     await showApplication();
   } catch { clearSession(); showLogin(); }
+  finally {
+    $('#sessionCheck').classList.add('hidden');
+    $('#loginForm').classList.remove('hidden');
+  }
 }
 
 $('#loginForm').addEventListener('submit', async (event) => {

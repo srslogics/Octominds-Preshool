@@ -47,7 +47,8 @@
           <span class="pill"><i></i> STAFF ACCESS</span>
           <h2>Welcome back.</h2>
           <p class="muted">Use your registered mobile number and 6-digit PIN.</p>
-          <form id="loginForm">
+          <p id="sessionCheck" role="status">Checking your saved session…</p>
+          <form id="loginForm" class="hidden">
             <div id="configurationNotice" class="configuration-notice hidden"><strong>Setup required</strong><span>Connect the approved Supabase and API environment before signing in.</span></div>
             <label class="credential-label">Mobile number
               <span class="phone-wrap"><span>+91</span><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="10" pattern="[6-9][0-9]{9}" placeholder="10-digit mobile number" required /></span>
@@ -55,7 +56,7 @@
             <label class="credential-label">6-digit PIN
               <span class="pin-wrap"><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="6" pattern="[0-9]{6}" placeholder="Enter your PIN" required /><button id="togglePin" type="button" aria-label="Show PIN">Show</button></span>
             </label>
-            <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" checked /> Keep me signed in</label><button class="text-button" id="forgotPin" type="button">Forgot PIN?</button></div>
+            <div class="form-row"><label class="check"><input id="rememberSession" type="checkbox" /> Keep me signed in</label><button class="text-button" id="forgotPin" type="button">Forgot PIN?</button></div>
             <button class="primary-button full" type="submit">Continue to inventory <i class="bi bi-arrow-right"></i></button>
           </form>
           <p class="access-note"><i class="bi bi-lock"></i> Access is limited to approved OctoMinds accounts.</p>
@@ -163,7 +164,7 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
-    <script src="/app.js?v=inventory-12"></script>
+    <script src="/app.js?v=inventory-13"></script>
     <script src="/pages.js?v=inventory-12"></script>
   </body>
 </html>

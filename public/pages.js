@@ -22,6 +22,10 @@ $('.quick-actions').classList.add('hidden');
 const pageToolbar = document.createElement('div');
 pageToolbar.className = 'page-toolbar';
 $('.inventory-hero').append(pageToolbar);
+const overviewIntro = document.createElement('section');
+overviewIntro.className = 'overview-intro hidden';
+overviewIntro.setAttribute('aria-label', 'Inventory shortcuts');
+$('.inventory-hero').after(overviewIntro);
 
 function routeInfo() {
   const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
@@ -55,6 +59,10 @@ async function renderRoute({ focus = false } = {}) {
     if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   const overview = route.page === 'overview';
+  overviewIntro.classList.toggle('hidden', !overview);
+  if (overview) {
+    overviewIntro.innerHTML = `<div><p class="eyebrow">A LITTLE ORDER. A BETTER DAY.</p><h2>Every center, thoughtfully stocked.</h2><p>Know what’s available, see what needs attention, and keep the day moving.</p></div><div class="overview-intro-actions"><a class="secondary-button" href="#/items">Explore catalogue <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a><a class="secondary-button" href="#/movements">Stock movements <i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>`;
+  }
   $('.inventory-metrics').classList.toggle('hidden', !overview);
   $('.inventory-side-stack').classList.toggle('hidden', !overview);
   $('#stockCatalogue').classList.toggle('hidden', route.page !== 'items' || Boolean(route.itemId));
@@ -121,11 +129,18 @@ document.addEventListener('inventory:loaded', () => {
   });
 });
 document.addEventListener('inventory:logout', () => { routeState.version++; pageHost.innerHTML = ''; });
+document.addEventListener('inventory:loading', () => {
+  routeState.version++;
+  if (!['overview', 'items'].includes(routeInfo().page) || routeInfo().itemId) {
+    pageHost.innerHTML = '<section class="card route-message" role="status">Loading this view…</section>';
+  }
+});
 document.addEventListener('inventory:error', event => {
-  if (routeInfo().page === 'centers') pageError(new Error(event.detail));
+  if (!['overview', 'items'].includes(routeInfo().page) || routeInfo().itemId) pageError(new Error(event.detail));
 });
 document.addEventListener('click', event => {
   if (event.target.closest('[data-stock-filter], #viewLowStock, [data-filter-item]')) navigatePage('items');
   const link = event.target.closest('a[href="#recentActivity"]');
   if (link) { event.preventDefault(); navigatePage('movements'); }
 });
+restoreSession();

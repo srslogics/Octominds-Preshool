@@ -36,7 +36,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, 
 """)
 for name in ["202608160001_phase_1_foundation.sql", "202608290001_inventory_production.sql",
              "202609010001_inventory_center_setup.sql", "202610110001_inventory_access_hardening.sql",
-             "202610110002_inventory_stock_integrity.sql"]:
+             "202610110002_inventory_stock_integrity.sql", "202610130001_inventory_reporting.sql"]:
     c.execute((root / "supabase/migrations" / name).read_text())
 
 branch, other, category, item, location = [str(uuid4()) for _ in range(5)]
@@ -153,5 +153,40 @@ login('super_admin')
 denied("SELECT * FROM post_inventory_movement(%s,%s,%s,'receipt',1,5,NULL,NULL,'inactive-test')", (branch,item,location), 'inactive center blocks stock commands')
 c.execute('SELECT id FROM inventory_items')
 check(c.fetchall() == [], 'inactive center data is not exposed')
+# Reporting must count/filter the entire catalogue, not the gateway row limit.
+c.execute('RESET ROLE')
+c.execute('UPDATE branches SET is_active=true WHERE id=%s', (branch,))
+c.execute("INSERT INTO inventory_items(branch_id,category_id,name,sku,created_by) SELECT %s,%s,'Bulk '||n,'BULK-'||n,%s FROM generate_series(1,5100) n", (branch, category, users['super_admin']))
+login('super_admin')
+c.execute('SELECT inventory_read_dashboard(%s)', (branch,))
+check(c.fetchone()[0]['active_items'] == 5101, 'dashboard counts more than 5000 items')
+c.execute("SELECT inventory_read_items(%s,'BULK-5100','out',1,25)", (branch,))
+report = c.fetchone()[0]
+check(report['total'] == 1 and report['items'][0]['sku'] == 'BULK-5100', 'search and stock filter find items beyond gateway cap')
+c.execute("SELECT inventory_read_items(%s,'Bulk','out',51,100)", (branch,))
+report = c.fetchone()[0]
+check(report['total'] == 5100 and len(report['items']) == 100, 'deep pagination reports exact total')
+login('teacher')
+c.execute('SELECT inventory_read_dashboard(%s)', (branch,))
+check(c.fetchone()[0]['active_items'] == 0, 'reporting RPC preserves role RLS')
+login('accountant')
+c.execute('SELECT inventory_read_dashboard(%s)', (other,))
+check(c.fetchone()[0]['active_items'] == 0, 'reporting RPC preserves center isolation')
+c.execute('RESET ROLE')
+# Place movements on both sides of local midnight and compare to the same local date.
+# Local fixture setup only: production movements remain immutable.
+c.execute('ALTER TABLE inventory_movements DISABLE TRIGGER inventory_movements_immutable')
+c.execute("UPDATE branches SET timezone='Asia/Kolkata' WHERE id=%s", (branch,))
+c.execute("UPDATE inventory_movements SET posted_at=(date_trunc('day',now() at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata')-interval '1 minute' WHERE branch_id=%s", (branch,))
+c.execute("UPDATE inventory_movements SET posted_at=(date_trunc('day',now() at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata')+interval '1 minute' WHERE id=(SELECT id FROM inventory_movements WHERE branch_id=%s LIMIT 1)", (branch,))
+c.execute('ALTER TABLE inventory_movements ENABLE TRIGGER inventory_movements_immutable')
+login('super_admin')
+c.execute('SELECT inventory_read_dashboard(%s)', (branch,))
+check(c.fetchone()[0]['movements_today'] == 1, 'today uses center-local midnight')
+c.execute('RESET ROLE')
+c.execute('SET ROLE anon')
+c.execute('SELECT inventory_readiness()')
+check(c.fetchone()[0]['ready'] is True, 'anonymous readiness exposes migration state only')
+denied('SELECT inventory_read_items()', (), 'anonymous catalogue RPC denied')
 db.close()
 print(f'{checks} security and stock-integrity regression checks passed')

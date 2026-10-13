@@ -212,18 +212,20 @@ function inventoryBranchId() {
   return $('#inventoryBranchSelect')?.value || currentUser?.branch_id || '';
 }
 
-function canWriteInventory() {
-  return ['super_admin', 'management', 'branch_admin'].includes(currentUser?.role);
+function canWriteInventory(branchId = inventoryBranchId()) {
+  const roles = currentUser?.branch_roles;
+  const role = roles ? (roles['*'] || roles[branchId]) : currentUser?.role;
+  if (roles && !branchId) return Object.values(roles).some(value => ['super_admin', 'management', 'branch_admin'].includes(value));
+  return ['super_admin', 'management', 'branch_admin'].includes(role);
 }
 
 function canManageCenters() {
   return ['super_admin', 'management'].includes(currentUser?.role);
 }
 
-function inventoryPath(path, parameters = {}) {
+function inventoryPath(path, parameters = {}, branchId = inventoryBranchId()) {
   const query = new URLSearchParams();
   Object.entries(parameters).forEach(([key, value]) => { if (value !== '' && value !== null && value !== undefined) query.set(key, value); });
-  const branchId = inventoryBranchId();
   if (branchId) query.set('branch_id', branchId);
   return `/api/v1/inventory${path}${query.size ? `?${query}` : ''}`;
 }
@@ -386,8 +388,9 @@ function renderInventoryItems(data) {
     }).join('');
   }
   body.querySelectorAll('[data-stock-item], [data-edit-item]').forEach((button) => {
-    button.classList.toggle('hidden', !canWriteInventory());
-    button.disabled = !canWriteInventory();
+    const item = data.items.find(item => item.id === (button.dataset.stockItem || button.dataset.editItem));
+    button.classList.toggle('hidden', !canWriteInventory(item?.branch_id));
+    button.disabled = !canWriteInventory(item?.branch_id);
   });
   $('#inventoryResultCount').textContent = `${data.total.toLocaleString('en-IN')} item${data.total === 1 ? '' : 's'}`;
   const totalPages = Math.max(1, Math.ceil(data.total / inventoryState.pageSize));
@@ -424,6 +427,7 @@ async function loadInventory({ keepLookups = false } = {}) {
   if (!session?.access_token) return;
   const version = ++inventoryLoadVersion;
   setInventoryLoading(true);
+  document.dispatchEvent(new Event('inventory:loading'));
   try {
     const requests = [
       apiRequest(inventoryPath('/dashboard')),
@@ -713,13 +717,29 @@ $('#inventoryItemsBody').addEventListener('click', async (event) => {
   $('#inventoryItemForm').reset(); $('#inventoryItemId').value = item.id; $('#inventoryItemDialogTitle').textContent = 'Edit item details'; $('#inventoryItemDialogCopy').textContent = 'Update the catalogue details. Use the stock buttons to change quantity.'; $('#itemOpeningStock').classList.add('hidden'); $('#itemName').value = item.name; $('#itemSku').value = item.sku; $('#itemSku').disabled = true; $('#itemCategory').value = item.category_id; $('#itemUnit').value = item.unit; $('#itemReorderLevel').value = item.reorder_level; $('#itemStandardCost').value = item.standard_cost || ''; $('#itemDescription').value = item.description || ''; setFormError('#inventoryItemError'); $('#inventoryItemDialog').showModal();
 });
 
+function csvCell(value) {
+  let text = String(value ?? '');
+  if (typeof value !== 'number' && (/^[\s]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text))) text = "'" + text;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
 async function exportInventory({ search = inventoryState.search, stockStatus = inventoryState.stockStatus } = {}) {
+  const branchId = inventoryBranchId();
+  const userId = currentUser?.id;
   try {
     const exported = []; let page = 1; let total = 0;
-    do { const result = await apiRequest(inventoryPath('/items', { search, stock_status: stockStatus, page, page_size: 100 })); exported.push(...result.items); total = result.total; page += 1; if (!result.items.length && exported.length < total) throw new Error('Export was interrupted. Please retry.'); } while (exported.length < total);
+    do {
+      if (!userId || currentUser?.id !== userId) throw new Error('Export cancelled because your session changed');
+      const result = await apiRequest(inventoryPath('/items', { search, stock_status: stockStatus, page, page_size: 100 }, branchId));
+      if (page > 1 && result.total !== total) throw new Error('Inventory changed during export. Please retry');
+      exported.push(...result.items); total = result.total; page += 1;
+      if (!result.items.length && exported.length < total) throw new Error('Export was interrupted. Please retry.');
+    } while (exported.length < total);
+    if (currentUser?.id !== userId) throw new Error('Export cancelled because your session changed');
+    if (new Set(exported.map(item => item.id)).size !== exported.length) throw new Error('Inventory changed during export. Please retry');
     if (!exported.length) return showToast('There are no inventory items to export');
     const rows = [['SKU', 'Item', 'Category', 'Locations', 'Quantity', 'Unit', 'Status'], ...exported.map((item) => [item.sku, item.name, item.category_name || '', (item.location_names || []).join('; '), item.quantity_on_hand, item.unit, item.stock_status])];
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
+    const csv = rows.map(row => row.map(csvCell).join(',')).join('\r\n');
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); link.download = `octominds-inventory-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(link.href); showToast(`${exported.length.toLocaleString('en-IN')} inventory items exported`);
   } catch (error) { showToast(error.message, 'error'); }
 }
@@ -748,5 +768,5 @@ $('#viewLowStock').addEventListener('click', () => { applyStockFilter('low'); $(
 $('#inventoryLowStockList').addEventListener('click', (event) => { const item = event.target.closest('[data-filter-item]'); if (!item) return; clearTimeout(inventorySearchTimer); $('#inventorySearch').value = item.dataset.filterItem; inventoryState.search = item.dataset.filterItem; inventoryState.stockStatus = 'all'; $('#inventoryStockFilter').value = 'all'; inventoryState.page = 1; loadInventory({ keepLookups: true }); $('#stockCatalogue').scrollIntoView({ block: 'start' }); });
 
 if (!configured()) $('#configurationNotice').classList.remove('hidden');
-restoreSession();
+// Session restoration begins in pages.js after all navigation handlers are ready.
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -2,6 +2,7 @@ import json
 import logging
 import time
 import uuid
+import httpx
 from pathlib import Path
 from typing import Annotated
 
@@ -61,11 +62,31 @@ class SessionResponse(BaseModel):
     full_name: str | None
     branch_name: str | None
     role_label: str
+    branch_roles: dict[str, str] | None = None
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
 def health(config: Annotated[Settings, Depends(get_settings)]) -> HealthResponse:
     return HealthResponse(status="ok", environment=config.environment, version="0.2.0")
+
+
+@app.get("/ready", tags=["system"])
+def readiness(config: Annotated[Settings, Depends(get_settings)]) -> Response:
+    """Probe authentication and the required database migration without exposing secrets."""
+    ready = False
+    try:
+        with httpx.Client(base_url=config.supabase_url, timeout=4.0,
+                          headers={"apikey": config.supabase_anon_key}) as client:
+            auth = client.get('/auth/v1/health')
+            schema = client.post('/rest/v1/rpc/inventory_readiness', json={})
+            ready = (auth.status_code == 200 and schema.status_code == 200
+                     and schema.json().get('ready') is True
+                     and schema.json().get('schema_version') == '202610130001')
+    except (httpx.HTTPError, ValueError, AttributeError):
+        pass
+    return Response(content=json.dumps({'status': 'ready' if ready else 'unavailable'}),
+                    status_code=200 if ready else 503, media_type='application/json',
+                    headers={'Cache-Control': 'no-store'})
 
 
 @app.get("/api/v1/session", response_model=SessionResponse, tags=["authentication"])

@@ -72,6 +72,22 @@ class InventoryRepository:
             total = len(payload or [])
         return payload or [], total
 
+    def read_report(self, function: str, data: dict[str, Any]) -> dict:
+        payload, _ = self._request('POST', f'/rpc/{function}', json=data)
+        if not isinstance(payload, dict):
+            raise InventoryError('inventory_invalid_response', 'Inventory report is unavailable', 502)
+        return payload
+
+    def all_rows(self, table: str, params: dict[str, Any]) -> list[dict]:
+        rows: list[dict] = []
+        while True:
+            page, total = self.list_rows(table, {**params, 'offset': len(rows), 'limit': 500})
+            rows.extend(page)
+            if len(rows) >= total:
+                return rows
+            if not page:
+                raise InventoryError('inventory_incomplete_response', 'Inventory changed during loading. Please retry', 409)
+
     def create_row(self, table: str, data: dict[str, Any]) -> dict:
         payload, _ = self._request("POST", f"/{table}", json=data, prefer="return=representation")
         if not payload:

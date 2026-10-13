@@ -7,7 +7,8 @@ import httpx
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
-from api.auth import get_current_user
+from api.auth import CurrentUser, Role, _resolve_memberships, get_current_user
+from api.inventory.permissions import resolve_branch
 from api.config import Settings
 from api.inventory.errors import InventoryError
 from api.inventory.repository import InventoryRepository
@@ -17,6 +18,44 @@ from api.inventory.service import InventoryService
 
 
 class InventoryRegressions(unittest.TestCase):
+    def test_memberships_are_order_independent_and_center_scoped(self):
+        a, b = str(uuid4()), str(uuid4())
+        memberships = [{'role': 'teacher', 'branch_id': a},
+                       {'role': 'accountant', 'branch_id': b},
+                       {'role': 'branch_admin', 'branch_id': a}]
+        role, scopes = _resolve_memberships(memberships)
+        self.assertEqual((role, scopes), _resolve_memberships(list(reversed(memberships))))
+        user = CurrentUser('test', '', None, role, None, branch_roles=scopes)
+        self.assertEqual(resolve_branch(user, a, write=True), a)
+        self.assertEqual(resolve_branch(user, b), b)
+        for center, write in [(b, True), (str(uuid4()), False), (None, True)]:
+            with self.assertRaises(HTTPException):
+                resolve_branch(user, center, write=write)
+
+    def test_all_rows_respects_upstream_page_cap(self):
+        repository = InventoryRepository(self.settings(), 'test')
+        with patch.object(repository, 'list_rows', side_effect=[([{'id': 1}], 2), ([{'id': 2}], 2)]) as rows:
+            self.assertEqual(len(repository.all_rows('items', {})), 2)
+        self.assertEqual(rows.call_args.args[1]['offset'], 1)
+
+    def test_readiness_requires_auth_and_migrated_database(self):
+        from api.main import app
+        from api.config import get_settings
+        from fastapi.testclient import TestClient
+        config = self.settings()
+        app.dependency_overrides[get_settings] = lambda: config
+        real_client = httpx.Client
+        try:
+            for healthy in [True, False]:
+                transport = httpx.MockTransport(lambda req: httpx.Response(200, json=
+                    {'schema_version': '202610130001', 'ready': healthy}))
+                with TestClient(app) as client:
+                    with patch('api.main.httpx.Client', side_effect=lambda **kw: real_client(transport=transport, **kw)):
+                        response = client.get('/ready')
+                self.assertEqual(response.status_code, 200 if healthy else 503)
+        finally:
+            app.dependency_overrides.clear()
+
     def test_history_pagination_and_transfer_filter(self):
         repository = InventoryRepository(self.settings(), 'test')
         with patch.object(repository, 'list_rows', return_value=([], 0)) as rows:
@@ -28,10 +67,10 @@ class InventoryRegressions(unittest.TestCase):
 
     def test_item_details_keep_center_scope(self):
         repository = InventoryRepository(self.settings(), 'test')
-        with patch.object(repository, 'list_rows', return_value=([], 0)) as rows:
+        with patch.object(repository, 'read_report', return_value={}) as rows:
             InventoryService(repository).list_items('center', '', 'all', 1, 1, 'item')
-        self.assertEqual(rows.call_args.args[1]['id'], 'eq.item')
-        self.assertEqual(rows.call_args.args[1]['branch_id'], 'eq.center')
+        self.assertEqual(rows.call_args.args[1]['p_item_id'], 'item')
+        self.assertEqual(rows.call_args.args[1]['p_branch_id'], 'center')
 
     def settings(self):
         return Settings(_env_file=None, supabase_anon_key='test-public-key')

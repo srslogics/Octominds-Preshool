@@ -26,6 +26,17 @@ def require_inventory_access(user: CurrentUser, write: bool = False) -> None:
 
 def resolve_branch(user: CurrentUser, requested_branch: UUID | None, *, write: bool = False) -> str | None:
     require_inventory_access(user, write=write)
+    if user.branch_roles is not None:
+        requested = str(requested_branch) if requested_branch else user.branch_id
+        if requested is None:
+            if write:
+                raise HTTPException(status_code=422, detail='Select a center before changing inventory')
+            return None  # RLS restricts the aggregate to this user's authorized centers.
+        role = user.branch_roles.get('*') or user.branch_roles.get(requested)
+        allowed = INVENTORY_WRITE_ROLES if write else INVENTORY_READ_ROLES
+        if role not in allowed:
+            raise HTTPException(status_code=403, detail='Requested center is outside your access for this action')
+        return requested
     if user.branch_id:
         if requested_branch and str(requested_branch) != user.branch_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requested center is outside your access")

@@ -1,5 +1,5 @@
-const CACHE = 'octominds-inventory-v13';
-const SHELL = ['/', '/index.html', '/workspace.css?v=inventory-10', '/operations.css?v=inventory-12', '/routes.css?v=inventory-12', '/app.js?v=inventory-13', '/pages.js?v=inventory-12', '/manifest.webmanifest'];
+const CACHE = 'octominds-inventory-v16';
+const SHELL = ['/', '/index.html', '/workspace.css?v=inventory-10', '/operations.css?v=inventory-12', '/routes.css?v=inventory-14', '/premium.css?v=inventory-16', '/app.js?v=inventory-15', '/pages.js?v=inventory-16', '/manifest.webmanifest'];
 self.addEventListener('install', (event) => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   await cache.addAll(SHELL);
@@ -14,7 +14,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname === '/health' || url.pathname === '/config.js') {
+  if (url.pathname.startsWith('/api/') || url.pathname === '/health' || url.pathname === '/ready' || url.pathname === '/config.js') {
     event.respondWith(fetch(event.request));
     return;
   }

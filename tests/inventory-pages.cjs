@@ -37,6 +37,7 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
  await page.locator('#loginForm button[type=submit]').click();
  await page.waitForFunction(()=>document.querySelector('#inventoryActiveItems').textContent==='2');
  await page.waitForTimeout(200);
+ assert.deepEqual(errors, [], 'no startup errors');
  assert.equal(await page.locator('#stockCatalogue').isVisible(),false);
  for(const name of ['items','movements','transfers','centers','reports','settings']){
    await page.locator('[data-page="'+name+'"]').click();
@@ -46,11 +47,18 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
    if(name==='items')assert.equal(await page.locator('#stockCatalogue').isVisible(),true);
    else assert.equal(await page.locator('#stockCatalogue').isVisible(),false);
    await page.addScriptTag({path:require.resolve('axe-core/axe.min.js')});
-   const violations=await page.evaluate(async()=> (await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}})).violations.map(v=>v.id));
+   const violations=await page.evaluate(async()=> (await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}})).violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>({target:n.target,reason:n.failureSummary}))})));
    assert.deepEqual(violations,[],name);
    for (const width of [320,390,768,1440]) {
      await page.setViewportSize({width,height:900});
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),name+' overflow '+width);
+     const controls=await page.evaluate(()=>{
+       const select=document.querySelector('#inventoryBranchSelect').getBoundingClientRect();
+       const menu=document.querySelector('.more-menu summary').getBoundingClientRect();
+       return {height:select.height,menuHeight:menu.height,top:select.top,menuTop:menu.top};
+     });
+     assert.equal(controls.height,44);assert.equal(controls.menuHeight,44);
+     assert.ok(Math.abs(controls.top-controls.menuTop)<1,'center controls aligned');
    }
  }
  await page.goBack();await page.waitForTimeout(150);assert.ok(page.url().includes('#/reports'));
@@ -82,8 +90,10 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
  await page.locator('[data-page-action="item"]').click();
  await page.locator('#inventoryItemDialog').waitFor();
  await page.addScriptTag({path:require.resolve('axe-core/axe.min.js')});
- assert.deepEqual(await page.evaluate(async()=> (await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}})).violations.map(v=>v.id)),[]);
+ assert.deepEqual(await page.evaluate(async()=> (await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}})).violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>({target:n.target,reason:n.failureSummary}))}))),[]);
+ await page.screenshot({path:'/tmp/octominds-premium-mobile-form.png',fullPage:true});
  await page.locator('#inventoryItemDialog [data-close-dialog]').first().click();
+ await page.screenshot({path:'/tmp/octominds-premium-mobile-items.png',fullPage:true});
  assert.deepEqual(errors,[]);
  console.log('PASS: isolated screens, history, refresh, filters, mobile width and accessibility');
  await browser.close();

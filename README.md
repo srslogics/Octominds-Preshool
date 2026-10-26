@@ -1,6 +1,8 @@
-# OctoMinds Inventory
+# OctoMinds Preschool Operations
 
-Multi-center inventory control for OctoMinds preschool operations.
+School setup, account access and multi-center inventory for OctoMinds preschool operations.
+
+Modules 1 and 2 are available at `/school.html`. See [school setup and access release notes](docs/school-foundation-access.md) for capabilities, permissions, staging prerequisites and verification. The implementation is not yet deployed.
 
 Production sign-off is pending. See `docs/audits/2026-10-11-inventory-audit.md` for confirmed findings, locally implemented fixes, and remaining checks.
 
@@ -37,6 +39,8 @@ Apply the migrations in order to the Supabase project configured by `SUPABASE_UR
 3. `supabase/migrations/202609010001_inventory_center_setup.sql`
 4. `supabase/migrations/202610110001_inventory_access_hardening.sql`
 5. `supabase/migrations/202610110002_inventory_stock_integrity.sql`
+6. `supabase/migrations/202610130001_inventory_reporting.sql`
+7. `supabase/migrations/202610260001_school_foundation.sql`
 
 Create approved users and memberships after the foundation migration. Browser-safe Supabase configuration is served dynamically by FastAPI at `/config.js`; database credentials and JWT secrets remain in Render environment variables.
 

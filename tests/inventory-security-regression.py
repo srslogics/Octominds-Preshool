@@ -28,7 +28,7 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
 END $$;
 CREATE SCHEMA auth;
-CREATE TABLE auth.users(id uuid PRIMARY KEY, email text, phone text, raw_user_meta_data jsonb DEFAULT '{}');
+CREATE TABLE auth.users(id uuid PRIMARY KEY, email text, email_confirmed_at timestamptz, phone text, raw_user_meta_data jsonb DEFAULT '{}');
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS
 $$ SELECT nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
 GRANT USAGE ON SCHEMA auth, public TO authenticated, anon;
@@ -36,7 +36,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, 
 """)
 for name in ["202608160001_phase_1_foundation.sql", "202608290001_inventory_production.sql",
              "202609010001_inventory_center_setup.sql", "202610110001_inventory_access_hardening.sql",
-             "202610110002_inventory_stock_integrity.sql", "202610130001_inventory_reporting.sql"]:
+             "202610110002_inventory_stock_integrity.sql", "202610130001_inventory_reporting.sql", "202610260001_school_foundation.sql"]:
     c.execute((root / "supabase/migrations" / name).read_text())
 
 branch, other, category, item, location = [str(uuid4()) for _ in range(5)]

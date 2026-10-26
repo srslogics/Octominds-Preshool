@@ -48,7 +48,7 @@ class InventoryRegressions(unittest.TestCase):
         try:
             for healthy in [True, False]:
                 transport = httpx.MockTransport(lambda req: httpx.Response(200, json=
-                    {'schema_version': '202610130001', 'ready': healthy}))
+                    {'schema_version': '202610260001', 'ready': healthy}))
                 with TestClient(app) as client:
                     with patch('api.main.httpx.Client', side_effect=lambda **kw: real_client(transport=transport, **kw)):
                         response = client.get('/ready')

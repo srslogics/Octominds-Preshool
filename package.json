@@ -9,7 +9,7 @@
     "dev": "python3 -m http.server 4173 --directory public",
     "build": "node scripts/build-static.mjs",
     "start": "python3 -m http.server 4173 --directory public",
-    "test": "npm run build && node --check public/app.js && node --check public/pages.js && node --check public/sw.js && node --test tests/*.test.mjs"
+    "test": "npm run build && node --check public/app.js && node --check public/pages.js && node --check public/school.js && node --check public/sw.js && node --test tests/*.test.mjs"
   },
   "dependencies": {},
   "devDependencies": {},

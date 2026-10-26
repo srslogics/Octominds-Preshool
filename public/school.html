@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="same-origin">
+  <meta name="theme-color" content="#173c38">
+  <title>School administration · OctoMinds</title>
+  <link rel="icon" href="/assets/octominds-icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/school.css?v=foundation-1">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <section id="auth" class="auth-wrap" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <img class="brand" src="/assets/octominds-logo-horizontal.png" alt="OctoMinds">
+      <p class="eyebrow">YOUR SCHOOL WORKSPACE</p>
+      <h1 id="authTitle">Welcome back</h1>
+      <p id="authDescription">Sign in with your email and password or your existing mobile number and PIN.</p>
+      <form id="signInForm">
+        <label>Email or mobile number<input id="identity" autocomplete="username" required maxlength="254"></label>
+        <label>Password or PIN<input id="password" type="password" autocomplete="current-password" required minlength="6" maxlength="128"></label>
+        <label class="check"><input id="remember" type="checkbox">Keep me signed in on this device</label>
+        <button class="primary" type="submit">Sign in</button>
+      </form>
+      <div class="auth-actions"><button id="createAccount" type="button" class="text">Create invited account</button><button id="recover" type="button" class="text">Forgot password</button></div>
+      <form id="resetForm" hidden>
+        <label>New password<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+        <label>Confirm password<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+        <button class="primary" type="submit">Save password</button>
+      </form>
+      <button id="dismissInvitation" type="button" class="text" hidden>Dismiss invitation</button>
+      <p id="authMessage" role="status" aria-live="polite"></p>
+      <a href="/">Open inventory</a>
+    </div>
+  </section>
+  <div id="workspace" hidden>
+    <header class="topbar"><a href="/school.html" aria-label="School workspace"><img class="brand" src="/assets/octominds-logo-horizontal.png" alt="OctoMinds"></a><span class="workspace-label">School administration</span><div class="identity"><strong id="userName"></strong><span id="userRole"></span></div><button id="signOut" type="button">Sign out</button></header>
+    <div class="layout">
+      <aside><p class="eyebrow">WORKSPACE</p><nav id="navigation" aria-label="School navigation"></nav><a id="inventoryLink" class="inventory-link" href="/">Open inventory ↗</a></aside>
+      <main id="main" tabindex="-1">
+        <div class="page-top"><div><p class="eyebrow" id="sectionLabel">SCHOOL FOUNDATION</p><h1 id="pageTitle"></h1><p id="pageDescription"></p></div><label class="center-label">Working center<select id="centerSelect" aria-label="Working center"></select></label></div>
+        <div id="toolbar" class="toolbar"></div>
+        <div id="content" aria-live="polite"></div>
+      </main>
+    </div>
+  </div>
+  <dialog id="editor" aria-labelledby="editorTitle">
+    <form id="editorForm"><div class="dialog-head"><div><p class="eyebrow">SCHOOL WORKSPACE</p><h2 id="editorTitle"></h2></div><button class="close" type="button" data-close aria-label="Close form">×</button></div><p id="editorHint"></p><div id="fields" class="form-grid"></div><p id="formError" role="alert"></p><div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save changes</button></div></form>
+  </dialog>
+  <dialog id="resultDialog" aria-labelledby="resultTitle"><h2 id="resultTitle">Invitation ready</h2><p>Share this link with the intended recipient. It expires in seven days and can be accepted once, using their verified email address.</p><label>Invitation link<input id="inviteLink" readonly></label><div class="dialog-actions"><button id="copyInvite" type="button">Copy link</button><button type="button" data-close>Done</button></div></dialog>
+  <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+  <script src="/config.js"></script><script src="/school.js?v=foundation-1"></script>
+</body>
+</html>

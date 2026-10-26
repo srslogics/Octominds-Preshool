@@ -15,6 +15,7 @@ $('#inventoryPage').append(pageHost);
 const routeState = { version: 0, offset: 0, type: 'all' };
 const nav = $('.workspace-nav');
 nav.innerHTML = Object.entries(screens).map(([id, [name]], i) => `<a href="#/${id}" data-page="${id}"><i class="bi bi-${icons[i]}" aria-hidden="true"></i>${name}</a>`).join('');
+nav.insertAdjacentHTML('beforeend', '<a href="/school.html"><i class="bi bi-building-gear" aria-hidden="true"></i>School administration</a>');
 $('.rail-management').remove();
 $$('.rail-brand, .app-brand').forEach(link => { link.href = '#/overview'; });
 $('.inventory-heading h1').tabIndex = -1;

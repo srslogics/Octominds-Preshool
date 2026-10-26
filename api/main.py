@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from .auth import CurrentUser, Role, get_current_user
 from .config import Settings, get_settings
 from .inventory.router import router as inventory_router
+from .school.router import router as school_router
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(message)s")
@@ -28,6 +29,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 app.include_router(inventory_router)
+app.include_router(school_router)
 
 
 @app.middleware("http")
@@ -78,10 +80,10 @@ def readiness(config: Annotated[Settings, Depends(get_settings)]) -> Response:
         with httpx.Client(base_url=config.supabase_url, timeout=4.0,
                           headers={"apikey": config.supabase_anon_key}) as client:
             auth = client.get('/auth/v1/health')
-            schema = client.post('/rest/v1/rpc/inventory_readiness', json={})
+            schema = client.post('/rest/v1/rpc/school_readiness', json={})
             ready = (auth.status_code == 200 and schema.status_code == 200
                      and schema.json().get('ready') is True
-                     and schema.json().get('schema_version') == '202610130001')
+                     and schema.json().get('schema_version') == '202610260001')
     except (httpx.HTTPError, ValueError, AttributeError):
         pass
     return Response(content=json.dumps({'status': 'ready' if ready else 'unavailable'}),

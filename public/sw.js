@@ -1,5 +1,5 @@
-const CACHE = 'octominds-inventory-v16';
-const SHELL = ['/', '/index.html', '/workspace.css?v=inventory-10', '/operations.css?v=inventory-12', '/routes.css?v=inventory-14', '/premium.css?v=inventory-16', '/app.js?v=inventory-15', '/pages.js?v=inventory-16', '/manifest.webmanifest'];
+const CACHE = 'octominds-foundation-v1';
+const SHELL = ['/', '/index.html', '/school.html', '/school.css?v=foundation-1', '/school.js?v=foundation-1', '/workspace.css?v=inventory-10', '/operations.css?v=inventory-12', '/routes.css?v=inventory-14', '/premium.css?v=inventory-16', '/app.js?v=foundation-1', '/pages.js?v=foundation-1', '/manifest.webmanifest'];
 self.addEventListener('install', (event) => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   await cache.addAll(SHELL);
@@ -19,7 +19,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).catch(() => caches.match('/index.html')));
+    event.respondWith(fetch(event.request).catch(() => caches.match(url.pathname === '/school.html' ? '/school.html' : '/index.html')));
     return;
   }
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {

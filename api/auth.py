@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Annotated
 
@@ -77,10 +78,12 @@ def _validated_claims(token: str, settings: Settings) -> dict:
 
 
 def _resolve_memberships(memberships: list[dict]) -> tuple[Role, dict[str, str]]:
-    priority = {Role.SUPER_ADMIN: 0, Role.MANAGEMENT: 1, Role.BRANCH_ADMIN: 2, Role.ACCOUNTANT: 3}
-    valid = [m for m in memberships if m.get('role') in priority]
+    priority = {Role.SUPER_ADMIN: 0, Role.MANAGEMENT: 1, Role.BRANCH_ADMIN: 2, Role.ACCOUNTANT: 3,
+                Role.TEACHER: 4, Role.ADMISSION_COUNSELLOR: 5, Role.PARENT: 6}
+    valid = [m for m in memberships if m.get('role') in priority and
+             (not m.get('expires_at') or datetime.fromisoformat(m['expires_at'].replace('Z', '+00:00')) > datetime.now(timezone.utc))]
     if not valid:
-        raise PermissionError('Inventory access is not assigned to this account')
+        raise PermissionError('School access is not assigned to this account')
     valid.sort(key=lambda m: (priority[m['role']], str(m.get('branch_id') or '')))
     roles: dict[str, str] = {}
     for membership in valid:
@@ -89,7 +92,7 @@ def _resolve_memberships(memberships: list[dict]) -> tuple[Role, dict[str, str]]
         if scope and scope not in roles:
             roles[scope] = role
     if not roles:
-        raise PermissionError('No inventory center is assigned')
+        raise PermissionError('No school center is assigned')
     return Role(valid[0]['role']), roles
 
 
@@ -105,7 +108,7 @@ def _load_access_profile(token: str, user_id: str, settings: Settings) -> tuple[
         memberships = []
         while True:
             membership_response = client.get('/user_memberships', params={
-                'user_id': f'eq.{user_id}', 'is_active': 'eq.true', 'select': 'role,branch_id',
+                'user_id': f'eq.{user_id}', 'is_active': 'eq.true', 'select': 'role,branch_id,expires_at',
                 'order': 'id.asc', 'limit': 500, 'offset': len(memberships),
             })
             membership_response.raise_for_status()

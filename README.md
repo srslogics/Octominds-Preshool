@@ -2,7 +2,7 @@
 
 School setup, account access and multi-center inventory for OctoMinds preschool operations.
 
-Modules 1 and 2 are available at `/school.html`. See [school setup and access release notes](docs/school-foundation-access.md) for capabilities, permissions, staging prerequisites and verification. The implementation is not yet deployed.
+Modules 1 and 2 are available at `/school`. See [school setup and access release notes](docs/school-foundation-access.md) for capabilities, permissions, staging prerequisites and verification. Legacy `/school.html` links redirect to `/school`.
 
 Production sign-off is pending. See `docs/audits/2026-10-11-inventory-audit.md` for confirmed findings, locally implemented fixes, and remaining checks.
 

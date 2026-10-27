@@ -201,7 +201,7 @@
         values.branch_id=['super_admin','management'].includes(values.role)?null:context.branch;
         const result=await api(`/school/access/${context.kind}`,values);
         $('#editor').close();await load();
-        if(context.kind==='invite'){$('#inviteLink').value=`${location.origin}/school.html#invite=${result.token}`;$('#resultDialog').showModal();}else notify('Account access assigned.');return;
+        if(context.kind==='invite'){$('#inviteLink').value=`${location.origin}/school#invite=${result.token}`;$('#resultDialog').showModal();}else notify('Account access assigned.');return;
       }
       if(!['school','centers'].includes(context.kind))values.branch_id=context.branch;
       if(context.row.id&&context.kind==='years'&&values.status==='closed'&&!window.confirm('Close this academic year? Its setup will become read only.'))return;
@@ -242,6 +242,7 @@
       await enter();$('#password').value='';$('#authMessage').textContent='';
     }catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
   });
+  // Keep the previously allowlisted email callback; the server redirects it to /school.
   $('#createAccount').addEventListener('click',async event=>{
     if(!sessionStorage.getItem(INVITE)){$('#authMessage').textContent='Ask your school administrator for an invitation link first.';return;}
     const email=$('#identity').value.trim(),password=$('#password').value;

@@ -134,7 +134,7 @@ async function showApplication() {
   if (!session || (session !== expectedSession && session.user?.id !== expectedSession?.user?.id)) return;
   currentUser = verifiedUser;
   const allowed = ['super_admin', 'management', 'branch_admin', 'accountant'];
-  if (!allowed.includes(currentUser.role)) { window.location.replace('/school.html'); return; }
+  if (!allowed.includes(currentUser.role)) { window.location.replace('/school'); return; }
   const role = currentUser.role_label || currentUser.role.replaceAll('_', ' ');
   const initials = userInitials(currentUser.full_name);
   $('#sidebarAvatar').textContent = $('#topbarAvatar').textContent = initials;

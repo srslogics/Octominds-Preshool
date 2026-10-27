@@ -4,7 +4,7 @@ Implementation status: local code and automated checks completed. This release h
 
 ## Module 1 — School and center setup
 
-Entry point: `/school.html`. Inventory links to School administration; school administration links back to inventory for eligible roles. Both use the existing signed-in session.
+Entry point: `/school`. Inventory links to School administration; school administration links back to inventory for eligible roles. Both use the existing signed-in session.
 
 | Screen | Implemented behavior |
 | --- | --- |
@@ -102,3 +102,7 @@ Database tests require `psycopg2-binary` and `TEST_DATABASE_URL`; they reject re
 ## Further product work
 
 The following are outside this implementation: child/guardian linking, admissions, student promotion, timetable conflict detection, occupancy against student enrollments, attendance, fees, payroll, transport, procurement additions, custom role definitions, MFA/SSO, SMS/WhatsApp delivery, offline writes and a multi-school SaaS tenant model. Inventory remains the existing implemented module. Add these as explicit subsequent modules rather than presenting their placeholder roles or configuration fields as finished functionality.
+
+## Clean page URLs
+
+School navigation and invitations use `/school`; inventory uses `/`. Existing `/school.html` and `/index.html` links redirect permanently, retaining query strings and browser fragments. Email confirmation/recovery continues requesting the previously allowlisted `/school.html` callback, which redirects to `/school`, so existing Supabase URL configuration remains compatible. Run browser tests against FastAPI rather than a plain static file server to exercise these routes.

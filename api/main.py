@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .auth import CurrentUser, Role, get_current_user
@@ -113,6 +114,38 @@ def frontend_config(config: Annotated[Settings, Depends(get_settings)]) -> Respo
     )
 
 
-# Keep this mount last so API and health routes always take precedence.
+# Public HTML documents have extensionless canonical URLs. Legacy links redirect
+# without dropping query parameters; browsers retain fragments across redirects.
 frontend_directory = Path(__file__).resolve().parents[1] / "public"
+html_pages = {}
+legacy_pages = {}
+for document in frontend_directory.rglob("*.html"):
+    relative = document.relative_to(frontend_directory).as_posix()
+    clean = "/" + relative.removesuffix(".html")
+    if document.name == "index.html":
+        canonical = clean.removesuffix("index").rstrip("/") or "/"
+        legacy_pages[clean] = canonical
+    else:
+        canonical = clean
+    html_pages[canonical] = document
+    legacy_pages["/" + relative] = canonical
+    if canonical != "/":
+        legacy_pages[canonical + "/"] = canonical
+
+
+@app.middleware("http")
+async def clean_page_urls(request: Request, call_next):
+    path = request.url.path
+    if request.method in {"GET", "HEAD"}:
+        if path in legacy_pages:
+            target = legacy_pages[path]
+            if request.url.query:
+                target += "?" + request.url.query
+            return RedirectResponse(target, status_code=308)
+        if path in html_pages:
+            return FileResponse(html_pages[path], headers={"Cache-Control": "no-cache"})
+    return await call_next(request)
+
+
+# Keep this mount last so API and health routes always take precedence.
 app.mount("/", StaticFiles(directory=frontend_directory, html=True), name="frontend")

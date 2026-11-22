@@ -34,10 +34,9 @@ $$ SELECT nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
 GRANT USAGE ON SCHEMA auth, public TO authenticated, anon;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, anon;
 """)
-for name in ["202608160001_phase_1_foundation.sql", "202608290001_inventory_production.sql",
-             "202609010001_inventory_center_setup.sql", "202610110001_inventory_access_hardening.sql",
-             "202610110002_inventory_stock_integrity.sql", "202610130001_inventory_reporting.sql", "202610260001_school_foundation.sql"]:
-    c.execute((root / "supabase/migrations" / name).read_text())
+c.execute((Path(__file__).resolve().parent/'storage-fixture.sql').read_text())
+for migration in sorted((root / "supabase/migrations").glob("*.sql")):
+    c.execute(migration.read_text())
 
 branch, other, category, item, location = [str(uuid4()) for _ in range(5)]
 users = {role: str(uuid4()) for role in ["super_admin", "branch_admin", "accountant", "teacher", "parent"]}

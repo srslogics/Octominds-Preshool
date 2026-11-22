@@ -6,7 +6,12 @@ Modules 1 and 2 are available at `/school`. See [school setup and access release
 
 Production sign-off is pending. See `docs/audits/2026-10-11-inventory-audit.md` for confirmed findings, locally implemented fixes, and remaining checks.
 
-## Included
+## Family portal
+
+The first parent portal is available at `/parents`. Explore `/parents?preview=1` for a clearly labelled, memory-only preview with parent and school-team views. Preview actions never call the live API.
+
+Linked families can switch children, read class notices, home learning and diary notes, view dated events and school holidays, and message the assigned school team. Administrators register children and link accepted parent accounts from the School desk. Assigned teachers publish updates and private photo albums for their current classes. See [parent portal setup and release notes](docs/parent-portal.md) before enabling live use.
+
 
 ## Workspace screens
 
@@ -41,6 +46,8 @@ Apply the migrations in order to the Supabase project configured by `SUPABASE_UR
 5. `supabase/migrations/202610110002_inventory_stock_integrity.sql`
 6. `supabase/migrations/202610130001_inventory_reporting.sql`
 7. `supabase/migrations/202610260001_school_foundation.sql`
+8. `supabase/migrations/202611210001_parent_portal.sql`
+9. `supabase/migrations/202611210002_parent_gallery.sql`
 
 Create approved users and memberships after the foundation migration. Browser-safe Supabase configuration is served dynamically by FastAPI at `/config.js`; database credentials and JWT secrets remain in Render environment variables.
 
@@ -55,13 +62,25 @@ Required Render variables:
 
 ## Run locally
 
-Install Python packages from `requirements.txt`, provide a local `.env`, then start:
+Use Python 3.13 (matching Render) and Node.js 22 for the local checks. From the repository root:
 
-```text
-uvicorn api.main:app --reload
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+npm ci
+cp .env.example .env
 ```
 
-The application is served from the FastAPI origin. The standalone frontend preview command is available as `npm run dev` for layout work only.
+For a shell preview and isolated unit tests, set `SUPABASE_URL=http://127.0.0.1:54321` in `.env` and leave `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET`, and `DATABASE_URL` empty. This does not start Supabase. Sign-in and data operations require a separately configured local or staging Supabase project with all migrations and approved accounts; use that project's values when testing those flows.
+
+```sh
+python -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000/` for inventory or `http://127.0.0.1:8000/school` for school administration. `/health` checks that the app is running; `/ready` returns 503 until the configured Supabase service and required schema are available.
+
+The application is served from the FastAPI origin. The standalone frontend preview command is available as `npm run dev` for layout work only; use FastAPI to exercise clean page URLs, runtime configuration, and API routes.
 
 ## Verify
 
@@ -70,6 +89,8 @@ npm test
 python3 -m compileall -q api
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+GitHub Actions runs these checks, parent database and browser regressions, and dependency consistency checks on pull requests and pushes to `main`, using Python 3.13, Node.js 22, and a loopback Supabase URL without credentials. Other browser and database integration suites remain separate; the automated checks do not establish production readiness.
 
 Behavioral regression tests added during the October audit:
 

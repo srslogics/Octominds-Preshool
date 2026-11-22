@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#145c58" />
+    <meta name="referrer" content="same-origin" />
+    <meta
+      name="description"
+      content="Your child’s school day, a little closer. OctoMinds family portal."
+    />
+    <title>Families · OctoMinds</title>
+    <link rel="icon" href="/assets/octominds-icon-192.png" />
+    <link rel="stylesheet" href="/parents.css?v=2" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <section id="auth" class="auth-layout">
+      <div class="auth-story">
+        <img
+          src="/assets/octominds-logo-horizontal.png"
+          alt="OctoMinds"
+          class="logo"
+        />
+        <div>
+          <p class="eyebrow">A LITTLE CLOSER TO THEIR DAY</p>
+          <h1>Small moments.<br />Wonderful beginnings.</h1>
+          <p>
+            Stay connected to the learning, discoveries, and everyday joys of
+            your child’s school life.
+          </p>
+          <div class="story-art" aria-hidden="true">
+            <span class="sun"></span><span class="stem stem-one"></span
+            ><span class="stem stem-two"></span><span class="flower">✳</span
+            ><span class="art-caption">Growing together, every day.</span>
+          </div>
+        </div>
+        <p class="story-footer">OctoMinds · A world of little discoveries</p>
+      </div>
+      <div class="auth-panel">
+        <div class="auth-box">
+          <p class="eyebrow">THE FAMILY PORTAL</p>
+          <h2>Welcome to your<br />school community.</h2>
+          <p>Sign in with the account your school has invited.</p>
+          <form id="loginForm">
+            <label
+              >Email or mobile number<input
+                id="identity"
+                autocomplete="username"
+                maxlength="254"
+                required /></label
+            ><label
+              >Password or PIN<input
+                id="password"
+                type="password"
+                autocomplete="current-password"
+                minlength="6"
+                maxlength="128"
+                required /></label
+            ><label class="check"
+              ><input id="remember" type="checkbox" />Keep me signed in on this
+              device</label
+            ><button class="primary" type="submit">Sign in</button>
+          </form>
+          <p id="authMessage" role="status" aria-live="polite"></p>
+          <a href="/school">Accept an invitation or reset your password</a>
+          <div class="preview-intro">
+            <span>Take a look around first.</span
+            ><a class="button secondary" href="/parents?preview=1#/today"
+              >Explore the preview</a
+            ><small
+              >Sample families and school updates. No sign-in needed.</small
+            >
+          </div>
+        </div>
+      </div>
+    </section>
+    <div id="portal" hidden>
+      <div id="previewBanner" class="preview-banner" hidden>
+        <span
+          ><strong>Preview</strong> · Sample data. Changes last until you
+          reload.</span
+        ><label
+          >View as
+          <select id="previewRole">
+            <option value="parent">Parent</option>
+            <option value="staff">School team</option>
+          </select></label
+        ><a href="/parents">Exit preview</a>
+      </div>
+      <div class="app-layout">
+        <aside class="sidebar">
+          <a class="brand-link" href="/parents" aria-label="OctoMinds families"
+            ><img
+              class="logo"
+              src="/assets/octominds-logo-horizontal.png"
+              alt="OctoMinds"
+          /></a>
+          <p class="eyebrow sidebar-label">FAMILY SPACE</p>
+          <nav id="navigation" aria-label="Main navigation"></nav>
+          <div class="sidebar-note">
+            <span aria-hidden="true">✳</span
+            ><strong>A little connection.<br />A big difference.</strong>
+            <p>School and home, growing together.</p>
+          </div>
+          <a class="school-link" href="/school">School administration</a>
+        </aside>
+        <div class="app-body">
+          <header class="topbar">
+            <span class="portal-label">The family portal</span>
+            <div class="header-actions">
+              <span id="accountName"></span
+              ><button id="signOut" class="quiet" type="button">
+                Sign out
+              </button>
+            </div>
+          </header>
+          <main id="main" tabindex="-1">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow" id="pageEyebrow">HOME & SCHOOL, CONNECTED</p>
+                <h1 id="pageTitle">A little closer to their day.</h1>
+                <p id="pageDescription"></p>
+              </div>
+              <div id="childPicker" class="child-picker">
+                <label for="childSelect">Following along with</label
+                ><select id="childSelect"></select>
+              </div>
+            </div>
+            <div id="content" aria-live="polite"></div>
+          </main>
+          <footer class="app-footer">
+            Made for the moments that matter. <strong>OctoMinds</strong>
+          </footer>
+        </div>
+      </div>
+    </div>
+    <dialog id="editor" aria-labelledby="editorTitle">
+      <form id="editorForm">
+        <div class="dialog-heading">
+          <h2 id="editorTitle"></h2>
+          <button
+            type="button"
+            data-close
+            class="quiet"
+            aria-label="Close form"
+          >
+            ×
+          </button>
+        </div>
+        <p id="editorDescription" class="muted"></p>
+        <div id="editorFields"></div>
+        <p id="editorError" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" data-close class="secondary">Cancel</button
+          ><button class="primary" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+    <p id="toast" role="status" class="toast" hidden></p>
+    <script src="/config.js"></script>
+    <script type="module" src="/parents.js?v=2"></script>
+  </body>
+</html>

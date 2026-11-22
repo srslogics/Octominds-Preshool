@@ -9,9 +9,13 @@
     "dev": "python3 -m http.server 4173 --directory public",
     "build": "node scripts/build-static.mjs",
     "start": "python3 -m http.server 4173 --directory public",
-    "test": "npm run build && node --check public/app.js && node --check public/pages.js && node --check public/school.js && node --check public/sw.js && node --test tests/*.test.mjs"
+    "test": "npm run build && node --check public/app.js && node --check public/pages.js && node --check public/school.js && node --check public/sw.js && node --check public/parents.js && node --check public/parents-preview.js && node --check public/parents-gallery.js && node --check public/parents-gallery-preview.js && node --test tests/*.test.mjs",
+    "test:parents": "node tests/parents-browser.cjs",
+    "test:gallery": "node tests/gallery-browser.cjs"
   },
-  "dependencies": {},
-  "devDependencies": {},
+  "devDependencies": {
+    "axe-core": "^4.14.1",
+    "playwright": "^1.65.1"
+  },
   "type": "module"
 }

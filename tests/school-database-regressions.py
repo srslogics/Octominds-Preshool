@@ -33,6 +33,7 @@ alter default privileges in schema public grant all on tables to authenticated,a
 alter default privileges in schema public grant execute on functions to authenticated,anon;
 """)
 root = Path(__file__).resolve().parents[1]
+c.execute((Path(__file__).resolve().parent/'storage-fixture.sql').read_text())
 for migration in sorted((root/'supabase/migrations').glob('*.sql')):
     c.execute(migration.read_text())
 

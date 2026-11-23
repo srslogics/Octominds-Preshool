@@ -11,70 +11,76 @@
     />
     <title>Families · OctoMinds</title>
     <link rel="icon" href="/assets/octominds-icon-192.png" />
-    <link rel="stylesheet" href="/apps/parents/parents.css?v=3" />
+    <link rel="stylesheet" href="/apps/parents/parents.css?v=family-sign-in-1" />
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
-    <section id="auth" class="auth-layout">
-      <div class="auth-story">
-        <img
-          src="/assets/octominds-logo-horizontal.png"
-          alt="OctoMinds"
-          class="logo"
-        />
-        <div>
-          <p class="eyebrow">A LITTLE CLOSER TO THEIR DAY</p>
-          <h1>Small moments.<br />Wonderful beginnings.</h1>
-          <p>
-            Stay connected to the learning, discoveries, and everyday joys of
-            your child’s school life.
-          </p>
-          <div class="story-art" aria-hidden="true">
-            <span class="sun"></span><span class="stem stem-one"></span
-            ><span class="stem stem-two"></span><span class="flower">✳</span
-            ><span class="art-caption">Growing together, every day.</span>
+    <main id="auth" class="auth-layout" aria-labelledby="authTitle">
+      <div class="auth-shell">
+        <div class="auth-hero">
+          <span class="auth-sparkle auth-sparkle-left" aria-hidden="true">✦</span>
+          <span class="auth-sparkle auth-sparkle-right" aria-hidden="true">✧</span>
+          <div class="auth-brand">
+            <img
+              src="/assets/octominds-icon-512.png"
+              alt="OctoMinds · Preschool, daycare and evening activities"
+              width="512"
+              height="512"
+            />
           </div>
+          <p>Small moments. Wonderful beginnings. <span aria-hidden="true">🌱</span></p>
         </div>
-        <p class="story-footer">OctoMinds · A world of little discoveries</p>
-      </div>
-      <div class="auth-panel">
-        <div class="auth-box">
-          <p class="eyebrow">THE FAMILY PORTAL</p>
-          <h2>Welcome to your<br />school community.</h2>
-          <p>Sign in with the account your school has invited.</p>
+
+        <div class="auth-panel">
+          <header>
+            <h1 id="authTitle">Welcome to Family Portal</h1>
+            <p>Sign in with your invited school account.</p>
+          </header>
           <form id="loginForm">
-            <label
-              >Email or mobile number<input
+            <div class="auth-field">
+              <label for="identity"><span aria-hidden="true">📱</span> Email or mobile number</label>
+              <input
                 id="identity"
                 autocomplete="username"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="e.g. 98765 43210 or parent@example.com"
                 maxlength="254"
-                required /></label
-            ><label
-              >Password or PIN<input
-                id="password"
-                type="password"
-                autocomplete="current-password"
-                minlength="6"
-                maxlength="128"
-                required /></label
-            ><label class="check"
-              ><input id="remember" type="checkbox" />Keep me signed in on this
-              device</label
-            ><button class="primary" type="submit">Sign in</button>
+                required
+              />
+            </div>
+            <div class="auth-field">
+              <div class="auth-field-heading">
+                <label for="password"><span aria-hidden="true">🔑</span> Password or 6-digit PIN</label>
+                <a href="/school" aria-label="Need help signing in? Open School Administration">Need help?</a>
+              </div>
+              <div class="password-field">
+                <input
+                  id="password"
+                  type="password"
+                  autocomplete="current-password"
+                  minlength="6"
+                  maxlength="128"
+                  required
+                />
+                <button id="togglePassword" type="button" aria-controls="password" hidden>Show<span class="visually-hidden"> password or PIN</span></button>
+              </div>
+            </div>
+            <label class="check" for="remember">
+              <input id="remember" type="checkbox" />Keep me signed in on this device
+            </label>
+            <button class="auth-submit" type="submit">Sign in to school portal <span aria-hidden="true">🎒</span></button>
           </form>
           <p id="authMessage" role="status" aria-live="polite"></p>
-          <a href="/school">Accept an invitation or reset your password</a>
           <div class="preview-intro">
-            <span>Take a look around first.</span
-            ><a class="button secondary" href="/parents?preview=1#/today"
-              >Explore the preview</a
-            ><small
-              >Sample families and school updates. No sign-in needed.</small
-            >
+            <a class="button preview-link" href="/parents?preview=1#/today">
+              <span aria-hidden="true">✦</span> Peek inside our classrooms (guest preview)
+            </a>
+            <small>Sample school updates, activities, and photo albums.</small>
           </div>
         </div>
       </div>
-    </section>
+    </main>
     <div id="portal" hidden>
       <div id="previewBanner" class="preview-banner" hidden>
         <span
@@ -159,6 +165,6 @@
     </dialog>
     <p id="toast" role="status" class="toast" hidden></p>
     <script src="/config.js"></script>
-    <script type="module" src="/apps/parents/parents.js?v=3"></script>
+    <script type="module" src="/apps/parents/parents.js?v=family-sign-in-1"></script>
   </body>
 </html>

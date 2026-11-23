@@ -68,7 +68,32 @@ watchdog.unref();
       false,
     );
   }
-  await page.goto(origin + "/parents?preview=1#/today");
+  const screenshotDir = process.env.TEST_SCREENSHOT_DIR;
+  await page.goto(origin + "/parents");
+  await page.getByRole("heading", { name: "Welcome to Family Portal" }).waitFor();
+  assert.equal(await page.locator("#remember").isChecked(), false);
+  assert.equal(await page.getByRole("link", { name: /Need help signing in/ }).getAttribute("href"), "/school");
+  if (screenshotDir) {
+    await fs.mkdir(screenshotDir, { recursive: true });
+    await page.screenshot({ path: path.join(screenshotDir, "parents-sign-in-desktop.png") });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  if (screenshotDir) {
+    await page.screenshot({ path: path.join(screenshotDir, "parents-sign-in-phone.png"), fullPage: true });
+  }
+  const password = page.getByLabel("Password or 6-digit PIN");
+  await password.fill("preview-password");
+  await page.getByRole("button", { name: "Show password or PIN" }).click();
+  assert.equal(await password.getAttribute("type"), "text");
+  await page.getByRole("button", { name: "Hide password or PIN" }).click();
+  assert.equal(await password.getAttribute("type"), "password");
+  assert.equal(await password.inputValue(), "preview-password");
+  await password.clear();
+  await a11y();
+  await noOverflow();
+  await page.getByRole("link", { name: /guest preview/i }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  console.log("PASS: mobile sign-in layout, password visibility, and guest preview link");
   await visible("The latest little moments");
   assert.equal(await page.locator("#childSelect option").count(), 2);
   assert.equal(
@@ -77,7 +102,6 @@ watchdog.unref();
   );
   await a11y();
   await noOverflow();
-  const screenshotDir = process.env.TEST_SCREENSHOT_DIR;
   if (screenshotDir) {
     await fs.mkdir(screenshotDir, { recursive: true });
     await page.screenshot({

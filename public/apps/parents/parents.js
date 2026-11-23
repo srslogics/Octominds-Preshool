@@ -139,6 +139,12 @@ function storeSession(value, persistent) {
   if (persistent) localStorage.setItem(KEY, JSON.stringify(value));
   else localStorage.removeItem(KEY);
 }
+function setPasswordVisibility(visible) {
+  const input = $("#password");
+  const toggle = $("#togglePassword");
+  input.type = visible ? "text" : "password";
+  toggle.firstChild.textContent = visible ? "Hide" : "Show";
+}
 function clearSession() {
   gallery.reset();
   epoch++;
@@ -155,6 +161,7 @@ function clearSession() {
   $("#childSelect").replaceChildren();
   $("#accountName").textContent = "";
   $("#password").value = "";
+  setPasswordVisibility(false);
   $("#editor").close();
 }
 async function auth(path, body, token) {
@@ -756,10 +763,19 @@ $("#childSelect").addEventListener("change", (event) => {
   render();
 });
 window.addEventListener("hashchange", () => {
+  if ($("#portal").hidden) return;
   page = 1;
   render();
   $("#main").focus();
 });
+$(".skip").addEventListener("click", (event) => {
+  event.preventDefault();
+  ($("#portal").hidden ? $("#identity") : $("#main")).focus();
+});
+$("#togglePassword").addEventListener("click", () => {
+  setPasswordVisibility($("#password").type === "password");
+});
+$("#togglePassword").hidden = false;
 $("#loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = event.submitter,
@@ -784,6 +800,7 @@ $("#loginForm").addEventListener("submit", async (event) => {
     if (version !== epoch) return;
     storeSession(result, $("#remember").checked);
     $("#password").value = "";
+    setPasswordVisibility(false);
     await enter();
     $("#authMessage").textContent = "";
   } catch (error) {

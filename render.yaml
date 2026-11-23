@@ -12,11 +12,13 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.13.5
-      - key: SUPABASE_URL
+      - key: TURSO_DATABASE_URL
         sync: false
-      - key: SUPABASE_ANON_KEY
+      - key: TURSO_AUTH_TOKEN
         sync: false
-      - key: SUPABASE_JWT_SECRET
+      - key: FRONTEND_ORIGIN
         sync: false
-      - key: DATABASE_URL
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
         sync: false

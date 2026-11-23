@@ -122,13 +122,13 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
   assert.match(permissions, /Requested center is outside your access/);
   assert.match(main, /include_router\(inventory_router\)/);
   assert.match(router, /response_model=LookupResponse/);
-  assert.match(config, /SUPABASE_ANON_KEY is required in production/);
+  assert.match(config, /TURSO_DATABASE_URL is required in production/);
   assert.doesNotMatch(config, /use_confirmed_supabase_project/);
 });
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-gallery-v1/);
+  assert.match(serviceWorker, /octominds-turso-v1/);
   assert.match(serviceWorker, /skipWaiting/);
   assert.match(serviceWorker, /clients\.claim/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);

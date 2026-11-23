@@ -1,12 +1,10 @@
 """School API boundaries; database authorization is covered by integration tests."""
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from uuid import uuid4
-import httpx
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from api.auth import CurrentUser, Role, get_current_user, _resolve_memberships
-from api.config import Settings
 from api.main import app
 from api.school.router import SchoolRepository, repository
 
@@ -52,21 +50,6 @@ class SchoolAPI(unittest.TestCase):
         self.assertEqual(self.client.get('/api/v1/school/access').status_code,403)
         self.assertEqual(self.client.post('/api/v1/school/access/invite',json={'email':'not-an-email','role':'teacher','full_name':'Teacher'}).status_code,422)
         self.repo.request.assert_not_called()
-    def test_repository_preserves_bearer_and_maps_failures(self):
-        real_client=httpx.Client
-        config=Settings(_env_file=None,supabase_anon_key='public-key')
-        def handler(req):
-            self.assertEqual(req.headers['authorization'],'Bearer caller-token')
-            self.assertEqual(req.headers['apikey'],'public-key')
-            return httpx.Response(500,json={'code':'40001','message':'stale'})
-        with patch('api.school.router.httpx.Client',side_effect=lambda **kw:real_client(transport=httpx.MockTransport(handler),**kw)):
-            with self.assertRaises(HTTPException) as error:SchoolRepository(config,'caller-token').request('POST','/rpc/school_save_record',data={})
-        self.assertEqual(error.exception.status_code,409)
-    def test_pagination_continues_past_gateway_cap(self):
-        repo=SchoolRepository(Settings(_env_file=None),'token')
-        with patch.object(repo,'request',side_effect=[[{'id':'1'}],[{'id':'2'}],[]]) as request:
-            self.assertEqual(len(repo.rows('branches')),2)
-            self.assertEqual(request.call_args.kwargs['params']['offset'],2)
     def test_expired_roles_do_not_win_role_resolution(self):
         role,scope=_resolve_memberships([{'role':'branch_admin','branch_id':self.branch,'expires_at':'2000-01-01T00:00:00Z'},{'role':'teacher','branch_id':self.branch}])
         self.assertEqual(role,Role.TEACHER)

@@ -2,6 +2,8 @@ fastapi==0.143.0
 starlette==1.7.0
 uvicorn[standard]==0.54.0
 pydantic-settings==2.15.0
-PyJWT[crypto]==2.15.1
 httpx==0.28.1
 Pillow==13.0.0
+libsql==0.1.11
+argon2-cffi==25.1.0
+bcrypt==5.0.0

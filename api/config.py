@@ -1,44 +1,42 @@
 from functools import lru_cache
 from urllib.parse import urlparse
-from pydantic import field_validator, model_validator
+
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "OctoMinds API"
-    environment: str = "development"
-    frontend_origin: str = "http://localhost:4173"
-    supabase_url: str = "https://ipzhzxemjflihwbutkjl.supabase.co"
-    supabase_anon_key: str = ""
-    supabase_jwt_secret: str = ""
-    database_url: str = ""
-    log_level: str = "INFO"
+    app_name: str = 'OctoMinds API'
+    environment: str = 'development'
+    frontend_origin: str = 'http://127.0.0.1:8000'
+    turso_database_url: str = ''
+    turso_auth_token: SecretStr = SecretStr('')
+    sqlite_path: str = '.local/octominds.db'
+    resend_api_key: SecretStr = SecretStr('')
+    mail_from: str = ''
+    log_level: str = 'INFO'
 
-    @field_validator("supabase_url", mode="before")
-    @classmethod
-    def normalize_supabase_url(cls, value: str) -> str:
-        normalized = str(value or "").strip().rstrip("/")
-        return normalized
-
-    @model_validator(mode="after")
-    def require_production_auth_configuration(self):
-        endpoint = urlparse(self.supabase_url)
-        hosted = (endpoint.scheme == "https" and (endpoint.hostname or "").endswith(".supabase.co")
-                  and endpoint.path in {"", "/"} and not endpoint.query and not endpoint.fragment
-                  and not endpoint.username and not endpoint.password and endpoint.port in {None, 443})
-        local = (self.environment != "production" and endpoint.scheme in {"http", "https"}
-                 and endpoint.hostname in {"localhost", "127.0.0.1", "::1"}
-                 and endpoint.path in {"", "/"} and not endpoint.query and not endpoint.fragment
-                 and not endpoint.username and not endpoint.password)
-        if not hosted and not local:
-            raise ValueError("SUPABASE_URL must be a Supabase project URL, or a loopback URL outside production")
-        if self.environment == "production" and not self.supabase_anon_key.strip():
-            raise ValueError("SUPABASE_ANON_KEY is required in production")
+    @model_validator(mode='after')
+    def validate_backend(self):
+        if self.turso_database_url:
+            url = urlparse(self.turso_database_url)
+            if (url.scheme not in {'libsql', 'https'} or not url.hostname or
+                    not url.hostname.endswith('.turso.io') or url.username or url.password or
+                    url.path not in {'', '/'} or url.query or url.fragment):
+                raise ValueError('TURSO_DATABASE_URL must be the database URL from Turso')
+            if not self.turso_auth_token.get_secret_value():
+                raise ValueError('TURSO_AUTH_TOKEN is required for Turso Cloud')
+        elif self.environment == 'production':
+            raise ValueError('TURSO_DATABASE_URL is required in production')
+        if self.environment == 'production' and self.resend_api_key.get_secret_value():
+            url = urlparse(self.frontend_origin)
+            if url.scheme != 'https' or not url.hostname or url.path not in {'', '/'} or url.query or url.fragment:
+                raise ValueError('Set FRONTEND_ORIGIN to the public HTTPS service origin for account email')
         return self
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
 
 @lru_cache
-def get_settings() -> Settings:
+def get_settings():
     return Settings()

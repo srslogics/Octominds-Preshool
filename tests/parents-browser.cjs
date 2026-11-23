@@ -241,14 +241,15 @@ watchdog.unref();
   await p.route("**/config.js", (r) =>
     r.fulfill({
       contentType: "application/javascript",
-      body: "window.OCTOMINDS_CONFIG={supabaseUrl:'https://parents-test.supabase.co',supabaseAnonKey:'test'}",
+      body: "window.OCTOMINDS_CONFIG={}",
     }),
   );
-  await p.route("https://parents-test.supabase.co/**", (r) =>
+  await p.route("**/api/v1/auth/**", (r) =>
     r.fulfill({ json: {} }),
   );
   await p.route("**/api/v1/**", async (r) => {
     const u = new URL(r.request().url());
+    if (u.pathname.startsWith("/api/v1/auth/")) return r.fallback();
     if (u.pathname === "/api/v1/session")
       return r.fulfill({
         json: { id: "parent", full_name: "Test Parent", role: "parent" },

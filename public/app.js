@@ -16,7 +16,7 @@ let movementAttempt = null;
 let refreshInFlight = null;
 
 function configured() {
-  return Boolean(config.supabaseUrl && config.supabaseAnonKey && config.apiBaseUrl);
+  return Boolean(config.apiBaseUrl);
 }
 
 function escapeHtml(value) {
@@ -32,10 +32,10 @@ function showToast(message, kind = 'info') {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3600);
 }
 
-async function supabaseRequest(path, options = {}) {
-  const response = await fetch(`${config.supabaseUrl}/auth/v1${path}`, {
+async function accountRequest(path, options = {}) {
+  const response = await fetch(`${config.apiBaseUrl}/api/v1/auth${path}`, {
     ...options,
-    headers: { apikey: config.supabaseAnonKey, 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -52,7 +52,7 @@ async function refreshAccessToken() {
   if (!previous?.refresh_token) { clearSession(); showLogin(); throw new Error('Please sign in again'); }
   const task = (async () => {
     try {
-      const refreshed = await supabaseRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: previous.refresh_token }) });
+      const refreshed = await accountRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: previous.refresh_token }) });
       if (session !== previous) throw new Error('Session changed. Please try again');
       saveSession(refreshed, Boolean(localStorage.getItem(SESSION_KEY)));
     } catch (error) {
@@ -151,7 +151,7 @@ async function signInWithPin(phone, pin, persistent) {
   const nationalNumber = phone.replace(/\D/g, '').slice(-10);
   if (!/^[6-9][0-9]{9}$/.test(nationalNumber) || !/^[0-9]{6}$/.test(pin)) throw new Error('Enter your mobile number and 6-digit PIN');
   const loginEmail = `${nationalNumber}@auth.octominds.invalid`;
-  const value = await supabaseRequest('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: loginEmail, password: pin }) });
+  const value = await accountRequest('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: loginEmail, password: pin }) });
   saveSession(value, persistent);
   try { await showApplication(); } catch (error) { clearSession(); throw error; }
 }
@@ -163,7 +163,7 @@ async function restoreSession() {
     if (!stored) return;
     session = JSON.parse(stored);
     if (session.expires_at && session.expires_at * 1000 <= Date.now() && session.refresh_token) {
-      const refreshed = await supabaseRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: session.refresh_token }) });
+      const refreshed = await accountRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: session.refresh_token }) });
       saveSession(refreshed, Boolean(localStorage.getItem(SESSION_KEY)));
     }
     await showApplication();
@@ -200,7 +200,7 @@ $('#logoutButton').addEventListener('click', async () => {
   clearSession(); showLogin();
   localStorage.setItem(`${SESSION_KEY}.logout`, crypto.randomUUID());
   try {
-    if (token) await supabaseRequest('/logout?scope=local', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    if (token) await accountRequest('/logout?scope=local', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     showToast('Signed out safely');
   } catch { showToast('Signed out on this device. The server could not be reached to revoke the session.', 'error'); }
 });

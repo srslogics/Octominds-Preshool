@@ -1,18 +1,16 @@
 """Image validation, private proxying, retry safety and API boundaries."""
 import io
 import unittest
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-import httpx
 from PIL import Image
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from api.main import app
 from api.auth import CurrentUser, Role, get_current_user
 from api.school.router import SchoolRepository, repository
-from api.parents.gallery import normalize_photo, PhotoStorage, process_upload, MAX_UPLOAD
+from api.parents.gallery import normalize_photo, MAX_UPLOAD
 
 
 def image_bytes(fmt='JPEG', size=(64, 48), exif=False):
@@ -41,7 +39,7 @@ class GalleryAPI(unittest.TestCase):
 
     def test_all_gallery_routes_require_authentication(self):
         app.dependency_overrides.clear()
-        for method, path in [('GET', f'/children/{self.student}/gallery'),('POST','/albums'),('GET',f'/albums/{self.album}'),('POST',f'/albums/{self.album}/publish'),('POST',f'/albums/{self.album}/photos/{self.photo}'),('GET',f'/photos/{self.photo}/image'),('DELETE',f'/albums/{self.album}'),('DELETE',f'/albums/{self.album}/photos/{self.photo}'),('GET','/gallery/staff'),('GET','/gallery/cleanup'),('POST',f'/albums/{self.album}/cleanup')]:
+        for method, path in [('GET', f'/children/{self.student}/gallery'),('POST','/albums'),('GET',f'/albums/{self.album}'),('POST',f'/albums/{self.album}/publish'),('POST',f'/albums/{self.album}/photos/{self.photo}'),('GET',f'/photos/{self.photo}/image'),('DELETE',f'/albums/{self.album}'),('DELETE',f'/albums/{self.album}/photos/{self.photo}'),('GET','/gallery/staff')]:
             self.assertEqual(self.client.request(method,'/api/v1/parents'+path).status_code,401)
 
     def test_album_validation_and_gallery_paging(self):
@@ -64,48 +62,6 @@ class GalleryAPI(unittest.TestCase):
         self.assertEqual(self.client.post(url,content=b'').status_code,422)
         self.assertEqual(self.client.post(url,content=b'x'*(MAX_UPLOAD+1)).status_code,413)
         self.assertEqual(self.client.post(url,content=b'<svg onload="alert(1)"/>',headers={'Content-Type':'image/jpeg'}).status_code,422)
-
-    def test_upload_generates_immutable_full_and_thumbnail_then_finishes(self):
-        self.repo.request.side_effect=[{'status':'draft','can_manage':True},{'status':'pending'},{'id':self.photo,'status':'ready'}]
-        with patch('api.parents.gallery.PhotoStorage') as storage:
-            result=self.client.post(f'/api/v1/parents/albums/{self.album}/photos/{self.photo}',content=image_bytes('PNG'),headers={'X-Photo-Caption':'A%20happy%20day'})
-            self.assertEqual(result.status_code,201)
-            self.assertEqual(storage.return_value.upload.call_count,2)
-            self.assertTrue(storage.return_value.upload.call_args_list[0].args[0].endswith('/full.jpg'))
-            self.assertTrue(storage.return_value.upload.call_args_list[1].args[0].endswith('/thumb.jpg'))
-            self.assertEqual(self.repo.request.call_args.args[1],'/rpc/parents_finish_photo')
-
-    def test_already_completed_upload_does_not_write_storage_again(self):
-        self.repo.request.return_value={'status':'ready','id':self.photo}
-        with patch('api.parents.gallery.PhotoStorage') as storage:
-            process_upload(self.repo,self.album,self.photo,image_bytes(),'')
-            storage.assert_not_called()
-
-    def test_download_checks_current_child_access_and_sets_private_headers(self):
-        self.repo.request.return_value={'path':f'{self.album}/{self.photo}'}
-        with patch('api.parents.gallery.PhotoStorage') as storage:
-            storage.return_value.download.return_value=image_bytes(exif=True)
-            response=self.client.get(f'/api/v1/parents/photos/{self.photo}/image?student_id={self.student}')
-            self.assertEqual(response.status_code,200)
-            self.assertEqual(response.headers['content-type'],'image/jpeg')
-            self.assertIn('no-store',response.headers['cache-control'])
-            self.assertEqual(response.headers['x-content-type-options'],'nosniff')
-            self.assertEqual(self.repo.request.call_args.kwargs['data']['p_student'],self.student)
-            self.assertEqual(len(Image.open(io.BytesIO(response.content)).getexif()),0)
-        self.repo.request.side_effect=HTTPException(403,'No child access')
-        with patch('api.parents.gallery.PhotoStorage') as storage:
-            self.assertEqual(self.client.get(f'/api/v1/parents/photos/{self.photo}/image').status_code,403)
-            storage.assert_not_called()
-
-    def test_withdraw_hides_metadata_before_cleanup_and_reports_outage(self):
-        self.repo.request.return_value={'id':self.album,'paths':['album/photo/full.jpg']}
-        with patch('api.parents.gallery.PhotoStorage') as storage:
-            storage.return_value.delete.return_value=False
-            response=self.client.delete(f'/api/v1/parents/albums/{self.album}')
-            self.assertEqual(response.status_code,200)
-            self.assertTrue(response.json()['cleanup_pending'])
-            self.assertEqual(self.repo.request.call_args.kwargs['data']['p_action'],'withdraw')
-
 
 class ImageSafety(unittest.TestCase):
     def test_orientation_metadata_and_sizes(self):
@@ -130,18 +86,3 @@ class ImageSafety(unittest.TestCase):
         with self.assertRaises(HTTPException):normalize_photo(out.getvalue())
         with patch('api.parents.gallery.MAX_PIXELS',1):
             with self.assertRaises(HTTPException):normalize_photo(image_bytes())
-
-    def test_storage_preserves_caller_and_recovers_lost_upload_success(self):
-        repo=SimpleNamespace(settings=SimpleNamespace(supabase_url='http://127.0.0.1:54321',supabase_anon_key='public'),token='caller')
-        raw=image_bytes();real_client=httpx.Client
-        def handler(req):
-            self.assertEqual(req.headers['authorization'],'Bearer caller')
-            self.assertEqual(req.headers['apikey'],'public')
-            if req.method=='POST':
-                self.assertEqual(req.headers['x-upsert'],'false')
-                return httpx.Response(400,json={'message':'Asset already exists'})
-            return httpx.Response(200,content=raw)
-        with patch('api.parents.gallery.httpx.Client',side_effect=lambda **kw:real_client(transport=httpx.MockTransport(handler),**kw)):
-            PhotoStorage(repo).upload('album/photo/full.jpg',raw)
-            with self.assertRaises(HTTPException) as error:PhotoStorage(repo).upload('album/photo/full.jpg',b'different bytes')
-            self.assertEqual(error.exception.status_code,409)

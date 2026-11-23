@@ -1,129 +1,246 @@
-from __future__ import annotations
+"""Inventory queries and serialized stock mutations on libSQL."""
+import json
+from datetime import UTC, datetime, time, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from typing import Any
-from urllib.parse import quote
-
-import httpx
-
-from ..config import Settings
+from ..turso.db import now
+from ..turso.repository import SchoolRepository
+from ..turso.school import save_record
 from .errors import InventoryError
 
+SCALES = {'reorder_level': 1000, 'quantity': 1000, 'signed_quantity': 1000, 'quantity_on_hand': 1000,
+          'quantity_before': 1000, 'quantity_after': 1000, 'standard_cost': 100, 'unit_cost': 100,
+          'average_unit_cost': 100}
+MAX_STORED = 10**14-1
 
-class InventoryRepository:
-    def __init__(self, settings: Settings, access_token: str):
-        self.base_url = f"{settings.supabase_url}/rest/v1"
-        self.headers = {
-            "apikey": settings.supabase_anon_key,
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
 
-    def _request(self, method: str, path: str, *, params: dict[str, Any] | None = None, json: Any = None, prefer: str | None = None) -> tuple[Any, httpx.Headers]:
-        headers = dict(self.headers)
-        if prefer:
-            headers["Prefer"] = prefer
-        try:
-            with httpx.Client(base_url=self.base_url, headers=headers, timeout=12.0) as client:
-                response = client.request(method, path, params=params, json=json)
-        except httpx.HTTPError as exc:
-            raise InventoryError("inventory_service_unavailable", "Inventory data service is temporarily unavailable", 503) from exc
-        if response.status_code >= 400:
-            try:
-                payload = response.json() if response.content else {}
-            except ValueError:
-                payload = {}
-            if not isinstance(payload, dict):
-                payload = {}
-            if response.status_code >= 500 or response.status_code == 429:
-                raise InventoryError("inventory_service_unavailable", "Inventory data service is temporarily unavailable", 503)
-            server_message = str(payload.get("message") or payload.get("details") or "")
-            mapping = {
-                "insufficient_stock": ("insufficient_stock", "There is not enough stock for this movement", 409),
-                "inventory_access_denied": ("inventory_access_denied", "You do not have permission to change this inventory", 403),
-                "inventory_item_not_found": ("inventory_item_not_found", "The selected inventory item is unavailable", 404),
-                "inventory_location_not_found": ("inventory_location_not_found", "The selected inventory location is unavailable", 404),
-                "opening_balance_already_exists": ("opening_balance_already_exists", "Opening balance is only available before the first movement at this location", 409),
-                "inventory_unit_has_history": ("inventory_unit_has_history", "The unit cannot change after stock has been recorded. Create a new item for a different unit", 409),
-                "inventory_item_has_stock": ("inventory_item_has_stock", "Move or issue all remaining stock before archiving this item", 409),
-                "inventory_idempotency_conflict": ("inventory_idempotency_conflict", "This command was already used for different stock details. Refresh before continuing", 409),
-                "invalid_inventory_cost": ("invalid_inventory_cost", "Enter a valid non-negative cost", 422),
-                "invalid_inventory_idempotency_key": ("invalid_inventory_idempotency_key", "A valid command identifier is required", 422),
-                "inventory_transfer_same_location": ("inventory_transfer_same_location", "Choose a different destination location", 422),
-                "use_inventory_transfer_command": ("use_inventory_transfer_command", "Location transfers must use the transfer workflow", 422),
+def scaled(values):
+    return {key: int(Decimal(str(value))*SCALES[key]) if key in SCALES and value is not None else value
+            for key,value in values.items()}
+
+
+def unscaled(row):
+    return {k: v/SCALES[k] if k in SCALES and v is not None else v for k,v in row.items()}
+
+
+def require_write(access, branch):
+    if not access.inventory(branch, True):
+        raise InventoryError('inventory_access_denied','You cannot change stock at this center.',403)
+
+
+def scope(access, branch):
+    branches = [key for key in access.branches if (not branch or key==branch) and access.inventory(key)]
+    return f"branch_id in ({','.join('?' for _ in branches)})", branches
+
+
+def item_at(access, branch, item_id):
+    result = access.db.one('select * from inventory_items where id=? and branch_id=? and is_active=1',(item_id,branch))
+    if not result:
+        raise InventoryError('inventory_item_not_found','The selected item is unavailable.',404)
+    return result
+
+
+def require_location(db, branch, location):
+    if not db.scalar('select 1 from inventory_locations where id=? and branch_id=? and is_active=1',(location,branch)):
+        raise InventoryError('inventory_location_not_found','The selected location is unavailable.',404)
+
+
+def get_balance(db, item, location):
+    return db.one('select quantity_on_hand,average_unit_cost from inventory_stock_balances where item_id=? and location_id=?',
+                  (item,location)) or {'quantity_on_hand':0,'average_unit_cost':None}
+
+
+def weighted(before, old_cost, incoming, cost):
+    if cost is None:
+        return old_cost
+    numerator = before*(old_cost if old_cost is not None else cost) + incoming*cost
+    return int((Decimal(numerator)/Decimal(before+incoming)).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
+
+
+def record_movement(access, data, location, kind, delta, balance, cost=None, group=None, key=None):
+    db=access.db
+    branch,item=data['branch_id'],data['item_id']
+    before=balance['quantity_on_hand']
+    after=before+delta
+    if after<0:
+        raise InventoryError('insufficient_stock','There is not enough stock for this movement.',409)
+    if after>MAX_STORED:
+        raise InventoryError('invalid_inventory_quantity','The stock balance would exceed its allowed range.',422)
+    average=weighted(before,balance['average_unit_cost'],delta,cost) if delta>0 else balance['average_unit_cost']
+    db.execute("""
+        insert into inventory_stock_balances(branch_id,location_id,item_id,quantity_on_hand,average_unit_cost,version,updated_at)
+        values (?,?,?,?,?,1,?) on conflict(location_id,item_id) do update set
+        quantity_on_hand=excluded.quantity_on_hand,average_unit_cost=excluded.average_unit_cost,
+        version=inventory_stock_balances.version+1,updated_at=excluded.updated_at
+        """,(branch,location,item,after,average,now()))
+    return db.insert('inventory_movements', {'branch_id':branch,'location_id':location,'item_id':item,
+        'movement_type':kind,'quantity':abs(delta),'signed_quantity':delta,'quantity_before':before,'quantity_after':after,
+        'unit_cost':cost,'reference':data.get('reference'),'notes':data.get('notes'),'transfer_group_id':group,
+        'idempotency_key':key,'posted_by':access.actor,'posted_at':now()})
+
+
+class InventoryRepository(SchoolRepository):
+    def lookups(self, branch_id):
+        with self.access() as access:
+            where,args=scope(access,branch_id)
+            return {
+                'branches':[{'id':b, 'name':access.branches[b]['name'], 'code':access.branches[b]['code']}
+                            for b in sorted((key for key in access.branches if access.inventory(key)),
+                                            key=lambda key:(access.branches[key]['name'],key))],
+                'categories':access.db.all('select id,branch_id,name,code from inventory_categories where is_active=1 and '+where+' order by name,id',args),
+                'locations':access.db.all('select id,branch_id,name,code,location_type from inventory_locations where is_active=1 and '+where+' order by name,id',args),
+                'items':access.db.all('select id,branch_id,name,sku,unit from inventory_items where is_active=1 and '+where+' order by name,id',args)
             }
-            for marker, (code, message, status_code) in mapping.items():
-                if marker in server_message:
-                    raise InventoryError(code, message, status_code)
-            if response.status_code == 409 or payload.get("code") == "23505":
-                raise InventoryError("inventory_conflict", "This inventory code or SKU already exists", 409)
-            raise InventoryError("inventory_request_failed", "The inventory request could not be completed", min(response.status_code, 500))
-        try:
-            payload = response.json() if response.content else None
-        except ValueError as exc:
-            raise InventoryError("inventory_invalid_response", "Inventory data service returned an invalid response", 502) from exc
-        return payload, response.headers
 
-    def list_rows(self, table: str, params: dict[str, Any]) -> tuple[list[dict], int]:
-        payload, headers = self._request("GET", f"/{table}", params=params, prefer="count=exact")
-        content_range = headers.get("content-range", "*/0")
-        try:
-            total = int(content_range.rsplit("/", 1)[-1])
-        except ValueError:
-            total = len(payload or [])
-        return payload or [], total
+    def create_center(self,data):
+        with self.access(write=True) as access:
+            return save_record(access,'centers',data)
 
-    def read_report(self, function: str, data: dict[str, Any]) -> dict:
-        payload, _ = self._request('POST', f'/rpc/{function}', json=data)
-        if not isinstance(payload, dict):
-            raise InventoryError('inventory_invalid_response', 'Inventory report is unavailable', 502)
-        return payload
+    def list_items(self,branch_id,search,stock_status,page,page_size,item_id=None):
+        with self.access() as access:
+            where,args=scope(access,branch_id)
+            if item_id:
+                where += ' and id=?'
+                args.append(item_id)
+            db=access.db
+            sql=f"""with scoped as (select * from inventory_items where is_active=1 and {where}),
+                quantities as (select s.item_id,sum(s.quantity_on_hand) quantity from inventory_stock_balances s
+                   join scoped i on i.id=s.item_id group by s.item_id),
+                items as (select i.*,c.name category_name,coalesce(q.quantity,0) quantity_on_hand,
+                  case when coalesce(q.quantity,0)<=0 then 'out' when q.quantity<=i.reorder_level then 'low' else 'healthy' end stock_status
+                  from scoped i join inventory_categories c on c.id=i.category_id left join quantities q on q.item_id=i.id
+                  where instr(lower(i.name),lower(?))>0 or instr(lower(i.sku),lower(?))>0)
+                """
+            params=[*args,search,search,stock_status,stock_status]
+            condition=" where (?='all' or stock_status=?)"
+            total=db.scalar(sql+' select count(*) from items'+condition,params)
+            rows=db.all(sql+' select * from items'+condition+' order by name,id limit ? offset ?',
+                        [*params,page_size,(page-1)*page_size])
+            ids=[row['id'] for row in rows]
+            balances={key:[] for key in ids}
+            if ids:
+                slots=','.join('?' for _ in ids)
+                for b in db.all(f"""select s.item_id,s.location_id,s.quantity_on_hand,l.name from inventory_stock_balances s
+                        join inventory_locations l on l.id=s.location_id where s.item_id in ({slots}) order by l.name,s.location_id""",ids):
+                    balances[b['item_id']].append({'location_id':b['location_id'],'quantity_on_hand':b['quantity_on_hand']/1000,
+                                                   'inventory_locations':{'name':b['name']}})
+            items=[]
+            for row in rows:
+                parts=balances[row['id']]
+                items.append({**unscaled(row),'balances':parts,'location_names':list(dict.fromkeys(p['inventory_locations']['name'] for p in parts))})
+            return {'items':items,'total':total,'page':page,'page_size':page_size}
 
-    def all_rows(self, table: str, params: dict[str, Any]) -> list[dict]:
-        rows: list[dict] = []
-        while True:
-            page, total = self.list_rows(table, {**params, 'offset': len(rows), 'limit': 500})
-            rows.extend(page)
-            if len(rows) >= total:
-                return rows
-            if not page:
-                raise InventoryError('inventory_incomplete_response', 'Inventory changed during loading. Please retry', 409)
+    def dashboard(self,branch_id):
+        with self.access() as access:
+            db=access.db
+            where,branches=scope(access,branch_id)
+            result=db.one(f"""with scoped as (select id,reorder_level from inventory_items where is_active=1 and {where}),
+                quantities as (select i.id,i.reorder_level,coalesce(sum(s.quantity_on_hand),0) quantity
+                   from scoped i left join inventory_stock_balances s on s.item_id=i.id group by i.id)
+                select count(*) active_items, count(*) filter(where quantity>0 and quantity<=reorder_level) low_stock,
+                count(*) filter(where quantity<=0) out_of_stock from quantities""",branches)
+            movements=0
+            for branch in branches:
+                try:
+                    tz=ZoneInfo(access.branches[branch]['timezone'])
+                except (ZoneInfoNotFoundError,ValueError):
+                    tz=ZoneInfo('Asia/Kolkata')
+                today=datetime.now(tz).date()
+                intervals=[datetime.combine(day,time.min,tz).astimezone(UTC).isoformat() for day in (today,today+timedelta(days=1))]
+                movements+=db.scalar('select count(*) from inventory_movements where branch_id=? and posted_at>=? and posted_at<?',
+                                     [branch,*intervals])
+            return {**result,'movements_today':movements}
 
-    def create_row(self, table: str, data: dict[str, Any]) -> dict:
-        payload, _ = self._request("POST", f"/{table}", json=data, prefer="return=representation")
-        if not payload:
-            raise InventoryError("inventory_write_failed", "The inventory record was not created", 500)
-        return payload[0]
+    def list_movements(self,branch_id,limit,offset,movement_type):
+        with self.access() as access:
+            where,args=scope(access,branch_id)
+            if movement_type=='transfer':
+                where+=" and movement_type in ('transfer_in','transfer_out')"
+            elif movement_type!='all':
+                where+=' and movement_type=?'
+                args.append(movement_type)
+            db=access.db
+            total=db.scalar('select count(*) from inventory_movements where '+where,args)
+            rows=db.all(f"""select m.id,m.branch_id,m.movement_type,m.quantity,m.signed_quantity,m.quantity_after,m.reference,m.notes,
+                m.posted_at,i.name item_name,i.sku,i.unit,l.name location_name from
+                (select * from inventory_movements where {where} order by posted_at desc,id desc limit ? offset ?) m
+                join inventory_items i on i.id=m.item_id join inventory_locations l on l.id=m.location_id
+                order by m.posted_at desc,m.id desc""",[*args,limit,offset])
+            return {'movements':[unscaled(row) for row in rows],'total':total}
 
-    def create_center(self, data: dict[str, Any]) -> dict:
-        payload, _ = self._request(
-            "POST",
-            "/rpc/create_inventory_center",
-            json={f"p_{key}": value for key, value in data.items()},
-        )
-        if not payload:
-            raise InventoryError("inventory_write_failed", "The center was not created", 500)
-        return payload[0]
+    def create_row(self,table,data):
+        if table not in {'inventory_categories','inventory_locations','inventory_items'}:
+            raise ValueError('Invalid inventory table')
+        with self.access(write=True) as access:
+            require_write(access,data['branch_id'])
+            values={**scaled(data),'created_by':access.actor}
+            result=access.db.insert(table,values)
+            access.audit('inventory.record_created',table,result['id'],data['branch_id'])
+            return unscaled(result)
 
-    def update_item(self, item_id: str, branch_id: str, data: dict[str, Any]) -> dict:
-        payload, _ = self._request(
-            "PATCH",
-            "/inventory_items",
-            params={"id": f"eq.{item_id}", "branch_id": f"eq.{branch_id}"},
-            json=data,
-            prefer="return=representation",
-        )
-        if not payload:
-            raise InventoryError("inventory_item_not_found", "The inventory item was not found", 404)
-        return payload[0]
+    def update_item(self,item_id,branch_id,data):
+        with self.access(write=True) as access:
+            require_write(access,branch_id)
+            db=access.db
+            old=db.one('select * from inventory_items where id=? and branch_id=?',(item_id,branch_id))
+            if not old:
+                raise InventoryError('inventory_item_not_found','Item is unavailable.',404)
+            if data.get('unit',old['unit'])!=old['unit'] and db.scalar('select 1 from inventory_movements where item_id=?',(item_id,)):
+                raise InventoryError('inventory_unit_has_history','Create a new item to change units after posting stock.',409)
+            if data.get('is_active') is False and db.scalar('select 1 from inventory_stock_balances where item_id=? and quantity_on_hand<>0',(item_id,)):
+                raise InventoryError('inventory_item_has_stock','Move or issue all stock before archiving.',409)
+            result=db.update('inventory_items',item_id,{**scaled(data),'updated_at':now()})
+            access.audit('inventory.item_updated','inventory_items',item_id,branch_id)
+            return unscaled(result)
 
-    def post_movement(self, data: dict[str, Any]) -> dict:
-        payload, _ = self._request("POST", "/rpc/post_inventory_movement", json=data)
-        if not payload:
-            raise InventoryError("inventory_write_failed", "The stock movement was not posted", 500)
-        return payload[0]
-
-    def transfer_stock(self, data: dict[str, Any]) -> dict:
-        payload, _ = self._request("POST", "/rpc/transfer_inventory_stock", json=data)
-        if not payload:
-            raise InventoryError("inventory_write_failed", "The stock transfer was not posted", 500)
-        return payload[0]
+    def stock_command(self,operation,values):
+        data=scaled(values)
+        key=data.pop('idempotency_key').strip()
+        if len(key)<8:
+            raise InventoryError('invalid_inventory_idempotency_key','A valid command identifier is required.',422)
+        branch,item=data['branch_id'],data['item_id']
+        for field in ('notes','reference'):
+            data[field]=(data.get(field) or '').strip() or None
+        if operation=='movement':
+            data.setdefault('unit_cost',None)
+        quantity=data['quantity']
+        if quantity<=0 or quantity>999999999999:
+            raise InventoryError('invalid_inventory_quantity','Choose a stock quantity within the supported range.',422)
+        payload=json.dumps(data,sort_keys=True,separators=(',',':'))
+        with self.access(write=True) as access:
+            require_write(access,branch)
+            db=access.db
+            previous=db.one('select * from inventory_commands where actor_id=? and command_key=?',(access.actor,key))
+            if previous:
+                if previous['operation']!=operation or previous['payload']!=payload:
+                    raise InventoryError('inventory_idempotency_conflict','This identifier was already used for different stock details.',409)
+                return json.loads(previous['result'])
+            item_at(access,branch,item)
+            if operation=='movement':
+                location,kind=data['location_id'],data['movement_type']
+                require_location(db,branch,location)
+                balance=get_balance(db,item,location)
+                if kind=='opening_balance' and (balance['quantity_on_hand'] or db.scalar(
+                        'select 1 from inventory_movements where item_id=? and location_id=?',(item,location))):
+                    raise InventoryError('opening_balance_already_exists','Opening balance is only available before the first movement.',409)
+                delta=-quantity if kind in ('issue','adjustment_loss') else quantity
+                movement=record_movement(access,data,location,kind,delta,balance,data['unit_cost'],key=key)
+                result={'movement_id':movement['id'],'quantity_after':movement['quantity_after']/1000}
+                access.audit('inventory.movement_posted','inventory_movement',movement['id'],branch)
+            else:
+                source,target=data['from_location_id'],data['to_location_id']
+                if source==target:
+                    raise InventoryError('inventory_transfer_same_location','Choose different locations.',422)
+                require_location(db,branch,source)
+                require_location(db,branch,target)
+                source_balance,target_balance=get_balance(db,item,source),get_balance(db,item,target)
+                group=str(uuid4())
+                out=record_movement(access,data,source,'transfer_out',-quantity,source_balance,source_balance['average_unit_cost'],group,key+':out')
+                into=record_movement(access,data,target,'transfer_in',quantity,target_balance,source_balance['average_unit_cost'],group,key+':in')
+                result={'transfer_group_id':group,'from_quantity_after':out['quantity_after']/1000,'to_quantity_after':into['quantity_after']/1000}
+                access.audit('inventory.stock_transferred','inventory_transfer',group,branch)
+            db.insert('inventory_commands',{'actor_id':access.actor,'command_key':key,'operation':operation,
+                      'payload':payload,'result':json.dumps(result)},generate_id=False)
+            return result

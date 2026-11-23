@@ -2,7 +2,7 @@ import json
 import logging
 import time
 import uuid
-import httpx
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .auth import CurrentUser, Role, get_current_user
 from .config import Settings, get_settings
@@ -18,23 +19,34 @@ from .inventory.router import router as inventory_router
 from .school.router import router as school_router
 from .parents.router import router as parents_router
 from .parents.gallery import router as gallery_router
+from .turso.accounts import router as auth_router
+from .turso.db import initialize, ready
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("octominds.api")
 
-app = FastAPI(title=settings.app_name, version="0.2.0", docs_url="/docs" if settings.environment != "production" else None)
+@asynccontextmanager
+async def lifespan(app):
+    # Development can create a local database on first launch. Cloud setup is explicit.
+    if not settings.turso_database_url:
+        await run_in_threadpool(initialize, settings)
+    yield
+
+
+app = FastAPI(lifespan=lifespan, title=settings.app_name, version="0.2.0", docs_url="/docs" if settings.environment != "production" else None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Photo-Caption"],
 )
 app.include_router(inventory_router)
 app.include_router(school_router)
 app.include_router(parents_router)
 app.include_router(gallery_router)
+app.include_router(auth_router)
 
 
 @app.middleware("http")
@@ -81,20 +93,10 @@ def health(config: Annotated[Settings, Depends(get_settings)]) -> HealthResponse
 
 @app.get("/ready", tags=["system"])
 def readiness(config: Annotated[Settings, Depends(get_settings)]) -> Response:
-    """Probe authentication and the required database migration without exposing secrets."""
-    ready = False
-    try:
-        with httpx.Client(base_url=config.supabase_url, timeout=4.0,
-                          headers={"apikey": config.supabase_anon_key}) as client:
-            auth = client.get('/auth/v1/health')
-            schema = client.post('/rest/v1/rpc/parents_gallery_readiness', json={})
-            ready = (auth.status_code == 200 and schema.status_code == 200
-                     and schema.json().get('ready') is True
-                     and schema.json().get('schema_version') == '202611210002')
-    except (httpx.HTTPError, ValueError, AttributeError):
-        pass
-    return Response(content=json.dumps({'status': 'ready' if ready else 'unavailable'}),
-                    status_code=200 if ready else 503, media_type='application/json',
+    """Check connectivity and the application schema."""
+    database_ready = ready(config)
+    return Response(content=json.dumps({'status': 'ready' if database_ready else 'unavailable'}),
+                    status_code=200 if database_ready else 503, media_type='application/json',
                     headers={'Cache-Control': 'no-store'})
 
 
@@ -106,13 +108,7 @@ def session(user: Annotated[CurrentUser, Depends(get_current_user)]) -> SessionR
 @app.get("/config.js", include_in_schema=False)
 def frontend_config(config: Annotated[Settings, Depends(get_settings)]) -> Response:
     """Expose only browser-safe runtime configuration."""
-    payload = (
-        "window.OCTOMINDS_CONFIG = Object.freeze({"
-        f"supabaseUrl: {json.dumps(config.supabase_url)},"
-        f"supabaseAnonKey: {json.dumps(config.supabase_anon_key)},"
-        "apiBaseUrl: window.location.origin"
-        "});\n"
-    )
+    payload = "window.OCTOMINDS_CONFIG = Object.freeze({apiBaseUrl: window.location.origin});\n"
     return Response(
         content=payload,
         media_type="application/javascript",

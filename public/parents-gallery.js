@@ -10,7 +10,6 @@ export function createGallery({
 }) {
   const $ = (s) => document.querySelector(s);
   let staffView = false,
-    removals = [],
     albums = [],
     urls = new Set(),
     view = null,
@@ -37,7 +36,6 @@ export function createGallery({
   document.body.insertAdjacentHTML(
     "beforeend",
     `
-    <dialog id="photoCleanup" aria-labelledby="photoCleanupTitle"><div class="dialog-heading"><h2 id="photoCleanupTitle">Finish photo removals</h2><button type="button" class="quiet" data-gallery-close="cleanup" aria-label="Close photo removals">×</button></div><p class="support-note">These photos are already hidden from families. Retry deleting the files from school storage.</p><div id="photoCleanupList"></div><p id="photoCleanupError" class="field-error" role="alert"></p></dialog>
     <dialog id="photoViewer" class="photo-viewer" aria-labelledby="photoViewerTitle">
       <div class="photo-viewer-heading"><div><p class="eyebrow">SCHOOL MEMORIES</p><h2 id="photoViewerTitle"></h2></div><button type="button" class="quiet" data-gallery-close="viewer" aria-label="Close photo viewer">×</button></div>
       <div id="photoStage" class="photo-stage" aria-live="polite"></div>
@@ -74,8 +72,6 @@ export function createGallery({
     $("#albumEditor").close();
   }
   function reset() {
-    $("#photoCleanup").close();
-    removals = [];
     closeViewer();
     closeUploader();
     for (const url of urls) URL.revokeObjectURL(url);
@@ -84,21 +80,11 @@ export function createGallery({
   }
 
   async function screen(student, page) {
-    const c = context(),
-      [result, cleanup] = await Promise.all([
-        api(
-          student
-            ? `/children/${student.id}/gallery?page=${page}`
-            : `/gallery/staff?page=${page}`,
-        ),
-        !student || student.can_publish || student.can_manage
-          ? api("/gallery/cleanup")
-          : Promise.resolve({ albums: [] }),
-      ]);
+    const c = context();
+    const result = await api(student ? `/children/${student.id}/gallery?page=${page}` : `/gallery/staff?page=${page}`);
     if (!current(c)) return "";
     staffView = !student;
     albums = result.albums;
-    removals = cleanup.albums;
     let previous = "",
       cards = "";
     for (const album of albums) {
@@ -120,7 +106,7 @@ export function createGallery({
       }</div><div class="album-card-body"><div class="album-meta"><span>${ready.length} ${ready.length === 1 ? "photo" : "photos"}</span>${album.status === "draft" ? '<span class="badge">Draft · school team only</span>' : ""}</div><h3>${esc(album.title)}</h3>${staffView ? `<p>${esc(album.class_name)} · ${esc(album.student_name || "Whole class")}</p>` : ""}${album.description ? `<p>${esc(album.description)}</p>` : ""}${album.can_manage ? `<div class="album-actions">${album.status === "draft" ? `<button type="button" class="secondary" data-gallery-resume="${esc(album.id)}">Review draft</button>` : ""}<button type="button" class="quiet danger" data-gallery-withdraw="${esc(album.id)}">${album.status === "draft" ? "Discard" : "Withdraw"} album</button></div>` : ""}</div></article>`;
     }
     if (previous) cards += "</div></section>";
-    return `<div class="toolbar"><span class="count">${result.total} ${result.total === 1 ? "album" : "albums"}${student ? ` shared with ${esc(student.full_name)}` : " you manage"}</span><span class="spacer"></span>${(!student || student.can_publish) && c.workspace.classes.length ? '<button type="button" class="primary" data-gallery-upload>Share photos</button>' : ""}<button type="button" class="secondary" data-refresh aria-label="Refresh gallery">Refresh</button></div><p class="gallery-note">A little window into their school day. Photos are shared privately with linked families.</p>${removals.length ? '<div class="gallery-cleanup"><span>Some removed photos are hidden from families but still need their files deleted.</span><button type="button" data-gallery-cleanup class="secondary">Finish photo removals</button></div>' : ""}${cards || `<div class="empty">${icon("gallery")}<h2>Little moments are on their way.</h2><p>When the school team shares photos, you’ll find them here, organized by date.</p></div>`}${result.total > result.page_size ? `<div class="pagination"><button data-page="${page - 1}" ${page === 1 ? "disabled" : ""} aria-label="Previous page">${icon("back")}</button><span>Page ${page} of ${Math.ceil(result.total / result.page_size)}</span><button data-page="${page + 1}" ${page * result.page_size >= result.total ? "disabled" : ""} aria-label="Next page">${icon("next")}</button></div>` : ""}`;
+    return `<div class="toolbar"><span class="count">${result.total} ${result.total === 1 ? "album" : "albums"}${student ? ` shared with ${esc(student.full_name)}` : " you manage"}</span><span class="spacer"></span>${(!student || student.can_publish) && c.workspace.classes.length ? '<button type="button" class="primary" data-gallery-upload>Share photos</button>' : ""}<button type="button" class="secondary" data-refresh aria-label="Refresh gallery">Refresh</button></div><p class="gallery-note">A little window into their school day. Photos are shared privately with linked families.</p>${cards || `<div class="empty">${icon("gallery")}<h2>Little moments are on their way.</h2><p>When the school team shares photos, you’ll find them here, organized by date.</p></div>`}${result.total > result.page_size ? `<div class="pagination"><button data-page="${page - 1}" ${page === 1 ? "disabled" : ""} aria-label="Previous page">${icon("back")}</button><span>Page ${page} of ${Math.ceil(result.total / result.page_size)}</span><button data-page="${page + 1}" ${page * result.page_size >= result.total ? "disabled" : ""} aria-label="Next page">${icon("next")}</button></div>` : ""}`;
   }
   async function image(photo, thumbnail = false) {
     const student = staffView ? null : context().student;
@@ -399,15 +385,11 @@ export function createGallery({
       return;
     const c = context();
     try {
-      const result = await api(`/albums/${albumId}`, null, "DELETE");
+      await api(`/albums/${albumId}`, null, "DELETE");
       if (!current(c)) return;
       closeUploader();
       await refresh();
-      toast(
-        result.cleanup_pending
-          ? "Album hidden. File cleanup is pending; the school team can retry cleanup."
-          : "Album withdrawn.",
-      );
+      toast("Album withdrawn.");
     } catch (error) {
       toast(error.message);
     }
@@ -415,41 +397,6 @@ export function createGallery({
   document.addEventListener("click", async (event) => {
     const el = event.target.closest("button");
     if (!el) return;
-    if (el.matches("[data-gallery-cleanup]")) {
-      $("#photoCleanupError").textContent = "";
-      $("#photoCleanupList").innerHTML = removals
-        .map(
-          (a) =>
-            `<div class="cleanup-row"><strong>${esc(a.title)}</strong><button type="button" data-gallery-retry-removal="${esc(a.id)}">Retry removal</button></div>`,
-        )
-        .join("");
-      $("#photoCleanup").showModal();
-      return;
-    }
-    if (el.matches("[data-gallery-retry-removal]")) {
-      el.disabled = true;
-      try {
-        const result = await api(
-          `/albums/${el.dataset.galleryRetryRemoval}/cleanup`,
-          {},
-        );
-        if (result.cleanup_pending)
-          throw Error(
-            "The files could not be removed yet. Please try again shortly.",
-          );
-        el.closest(".cleanup-row").remove();
-        if (!$("#photoCleanupList").children.length) {
-          $("#photoCleanup").close();
-          await refresh();
-          toast("Photo removals completed.");
-        }
-      } catch (error) {
-        $("#photoCleanupError").textContent = error.message;
-      } finally {
-        el.disabled = false;
-      }
-      return;
-    }
     if (el.matches("[data-gallery-upload]")) return openUploader();
     if (el.matches("[data-gallery-resume]"))
       return openUploader(el.dataset.galleryResume);
@@ -472,8 +419,6 @@ export function createGallery({
       return showPhoto(view.index);
     if (el.matches("[data-gallery-close]")) {
       if (el.dataset.galleryClose === "viewer") closeViewer();
-      else if (el.dataset.galleryClose === "cleanup")
-        $("#photoCleanup").close();
       else if (upload && !upload.busy) {
         const hasDraft = Boolean(upload.album);
         closeUploader();
@@ -504,7 +449,7 @@ export function createGallery({
         photo = view.photos[view.index];
       el.disabled = true;
       try {
-        const result = await api(
+        await api(
           `/albums/${album.id}/photos/${photo.id}`,
           null,
           "DELETE",
@@ -512,11 +457,7 @@ export function createGallery({
         if (!current(c)) return;
         closeViewer();
         await refresh();
-        toast(
-          result.cleanup_pending
-            ? "Photo hidden. File cleanup is pending."
-            : "Photo removed.",
-        );
+        toast("Photo removed.");
       } catch (error) {
         toast(error.message);
       } finally {
@@ -529,13 +470,11 @@ export function createGallery({
       el.disabled = true;
       try {
         if (task.album) {
-          const result = await api(
+          await api(
             `/albums/${task.album.id}/photos/${file.id}`,
             null,
             "DELETE",
           );
-          if (result.cleanup_pending)
-            toast("Photo hidden. File cleanup is pending.");
         }
         if (task !== upload) return;
         release(file.url);

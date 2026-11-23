@@ -10,10 +10,10 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
  let requests=[]; const writes=[];
  const items=[{id:'itemA',branch_id:A,category_id:'catA',name:'Center A books',sku:'A-BOOK',unit:'piece',reorder_level:2,standard_cost:0,description:'notes',quantity_on_hand:10,stock_status:'healthy',category_name:'Books',location_names:['Store A']},{id:'itemB',branch_id:B,category_id:'catB',name:'Center B crayons',sku:'B-CRAYON',unit:'piece',reorder_level:2,standard_cost:5,description:null,quantity_on_hand:0,stock_status:'out',category_name:'Art',location_names:[]}];
  const lookup={branches:[{id:A,name:'Center A'},{id:B,name:'Center B'}],categories:[{id:'catA',branch_id:A,name:'Books'},{id:'catB',branch_id:B,name:'Art'}],locations:[{id:'locA',branch_id:A,name:'Store A'},{id:'locB',branch_id:B,name:'Store B'}],items};
- await page.route('**/config.js',r=>r.fulfill({contentType:'application/javascript',body:`window.OCTOMINDS_CONFIG={supabaseUrl:'https://audit.supabase.co',supabaseAnonKey:'test-public-key',apiBaseUrl:'${ORIGIN}'};`}));
- await page.route('https://audit.supabase.co/**',r=>{requests.push(r.request().url()); return r.fulfill({json:{access_token:'test-access-token-'+(++tokenCounter),refresh_token:'test-refresh-token',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,user:{id:'audit-user'}}});});
+ await page.route('**/config.js',r=>r.fulfill({contentType:'application/javascript',body:`window.OCTOMINDS_CONFIG={apiBaseUrl:'${ORIGIN}'};`}));
+ await page.route('**/api/v1/auth/**',r=>{requests.push(r.request().url()); return r.fulfill({json:{access_token:'test-access-token-'+(++tokenCounter),refresh_token:'test-refresh-token',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,user:{id:'audit-user'}}});});
  await page.route('**/api/v1/**',async r=>{
-   const req=r.request(),u=new URL(req.url()); requests.push(u.pathname+u.search);
+   const req=r.request(),u=new URL(req.url());if(u.pathname.startsWith('/api/v1/auth/'))return r.fallback(); requests.push(u.pathname+u.search);
    if(rejectAuth) return r.fulfill({status:401,json:{detail:'Invalid access token'}});
    if(u.pathname.endsWith('/session'))return r.fulfill({json:{id:'audit-user',full_name:'Audit User',role,role_label:role,branch_id:null}});
    if(req.method()!=='GET'){

@@ -3,13 +3,13 @@ from typing import Annotated, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from ..auth import CurrentUser, Role, bearer, get_current_user
 from ..config import Settings, get_settings
+from ..turso.repository import SchoolRepository
 
 router = APIRouter(prefix='/api/v1/school', tags=['school'])
 
@@ -138,58 +138,8 @@ class AcceptInvitation(Fields):
 
 MODELS = {'school': School, 'centers': Center, 'years': Year, 'terms': Term,
           'programs': Program, 'classes': SchoolClass, 'assignments': Assignment, 'holidays': Holiday}
-TABLES = {'school': 'school_settings', 'centers': 'branches', 'years': 'academic_years',
-          'terms': 'school_terms', 'programs': 'school_programs', 'classes': 'school_classes',
-          'assignments': 'teacher_assignments', 'holidays': 'school_holidays'}
 ACTIONS = {'invite': Invitation, 'grant': Grant, 'revoke': RecordID,
            'revoke_invite': RecordID, 'status': AccountStatus}
-
-
-class SchoolRepository:
-    def __init__(self, settings: Settings, token: str):
-        self.settings, self.token = settings, token
-
-    def request(self, method, path, *, data=None, params=None):
-        try:
-            with httpx.Client(base_url=f'{self.settings.supabase_url}/rest/v1', timeout=15,
-                              headers={'apikey': self.settings.supabase_anon_key,
-                                       'Authorization': f'Bearer {self.token}'}) as client:
-                response = client.request(method, path, json=data, params=params)
-        except httpx.HTTPError as exc:
-            raise HTTPException(503, 'School service is temporarily unavailable') from exc
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise HTTPException(502, 'School service returned an invalid response') from exc
-        if response.is_error:
-            if not isinstance(payload, dict):
-                raise HTTPException(502, 'School service returned an invalid error')
-            code = payload.get('code') if isinstance(payload, dict) else None
-            if (response.status_code >= 500 and code != '40001') or response.status_code == 429:
-                raise HTTPException(503, 'School service is temporarily unavailable')
-            errors = {'23505': (409, 'This record or active role already exists. Only one year may be active per center.'),
-                      '23503': (422, 'Choose related records from the same center.'),
-                      '23514': (422, 'Check the dates, capacity, and required fields.'),
-                      '23502': (422, 'Complete all required fields.'),
-                      '42501': (403, payload.get('message', 'Access denied')),
-                      '40001': (409, 'This record changed. Reload before saving.'),
-                      'P0002': (404, 'Record is unavailable.'),
-                      '22023': (422, payload.get('message', 'Invalid record.'))}
-            status, message = errors.get(code, (400, 'The school request could not be completed.'))
-            raise HTTPException(status, message)
-        return payload
-
-    def rows(self, table):
-        # Stable ordering and explicit pages avoid the gateway's implicit row cap.
-        result = []
-        while True:
-            page = self.request('GET', f'/{table}', params={'select': '*', 'order': 'id.asc',
-                                                         'limit': 500, 'offset': len(result)})
-            if not isinstance(page, list):
-                raise HTTPException(502, 'School service returned an invalid list')
-            if not page:
-                return result
-            result.extend(page)
 
 
 def repository(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
@@ -209,9 +159,7 @@ def validate(model, data):
 @router.get('/workspace')
 def workspace(user: Annotated[CurrentUser, Depends(get_current_user)],
               repo: Annotated[SchoolRepository, Depends(repository)]):
-    data = {kind: repo.rows(table) for kind, table in TABLES.items()}
-    data['memberships'] = repo.rows('user_memberships')
-    return data
+    return repo.request('POST', '/rpc/school_workspace', data={})
 
 
 @router.post('/records/{kind}')
@@ -254,5 +202,5 @@ def access_command(action: str, body: dict, user: Annotated[CurrentUser, Depends
 @router.post('/accept-invitation')
 def accept_invitation(body: AcceptInvitation, repo: Annotated[SchoolRepository, Depends(repository)]):
     # Deliberately does not require a membership: invitees do not have one yet.
-    # Supabase verifies the bearer token; the RPC checks verified email and token ownership.
+    # The repository verifies the session, verified email, and invitation ownership.
     return repo.request('POST', '/rpc/school_accept_invitation', data={'p_token': body.token})

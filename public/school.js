@@ -6,7 +6,7 @@
   const INVITE = 'octominds.school.invitation';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = {super_admin:'Owner',management:'Management',branch_admin:'Center administrator',teacher:'Teacher',accountant:'Accountant',admission_counsellor:'Admissions counsellor',parent:'Parent or guardian'};
-  let session, user, data, access, selected='', editing=null, generation=0, loading=false, noticeTimer;
+  let emailCode, session, user, data, access, selected='', editing=null, generation=0, loading=false, noticeTimer;
   const pages = {
     overview:['Overview','A connected foundation for every center.'],
     school:['School profile','Maintain the identity and contact details shared by your centers.'],
@@ -32,8 +32,7 @@
   function resetAuth(){ $('#signInForm').hidden=false; $('.auth-actions').hidden=false; $('#resetForm').hidden=true; $('#resetForm').reset(); $('#password').value=''; $('#authTitle').textContent='Welcome back'; }
   function clearSession(){resetAuth();generation++;session=null;user=null;data=null;access=null;selected='';sessionStorage.removeItem(KEY);localStorage.removeItem(KEY);$('#workspace').hidden=true;$('#auth').hidden=false;$('#content').replaceChildren();document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
   async function auth(path,body,method='POST'){
-    if(!cfg.supabaseUrl||!cfg.supabaseAnonKey)throw Error('School sign-in has not been configured. Contact your administrator.');
-    const response=await fetch(`${cfg.supabaseUrl}/auth/v1${path}`,{method,headers:{apikey:cfg.supabaseAnonKey,'Content-Type':'application/json',...(session?.access_token?{Authorization:`Bearer ${session.access_token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+    const response=await fetch(`${cfg.apiBaseUrl||location.origin}/api/v1/auth${path}`,{method,headers:{'Content-Type':'application/json',...(session?.access_token?{Authorization:`Bearer ${session.access_token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
     const result=await response.json().catch(()=>({}));
     if(!response.ok){const error=Error(result.msg||result.message||result.error_description||'Unable to complete sign-in');error.status=response.status;throw error;}
     return result;
@@ -52,7 +51,7 @@
     const response=await fetch(`${cfg.apiBaseUrl||location.origin}/api/v1${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
     if(response.status===401&&retry&&session?.access_token===token){await refresh();return api(path,body,false);}
     const result=await response.json().catch(()=>({}));
-    if(!response.ok){if(response.status===401){clearSession();}throw Error(typeof result.detail==='string'?result.detail:'The request could not be completed. Please retry.');}
+    if(!response.ok){if(response.status===401){clearSession();}const error=Error(typeof result.detail==='string'?result.detail:'The request could not be completed. Please retry.');error.status=response.status;throw error;}
     return result;
   }
   async function enter(){
@@ -157,7 +156,7 @@
       holidays:[text('name','Holiday name'),...dates,select('is_active','Status',active)],
       invite:[text('full_name','Full name'),text('email','Email address','email'),select('role','Role',roles),text('expires_at','Access expires on optional','datetime-local',false)],
       grant:[select('user_id','Account',(access?.users||[]).filter(u=>u.is_active&&u.id!==user.id).map(u=>[u.id,`${u.full_name} (${u.email})`])),select('role','Role',roles),text('expires_at','Access expires on optional','datetime-local',false)],
-      password:[text('password','New password or PIN','password'),text('confirm','Confirm password or PIN','password')]
+      password:[text('current_password','Current password or PIN','password'),text('password','New password or PIN','password'),text('confirm','Confirm password or PIN','password')]
     };return fields[kind]||[];
   }
   function openEditor(kind,id){
@@ -195,7 +194,7 @@
         if(values.password!==values.confirm)throw Error('Passwords do not match.');
         const legacy=user.email.endsWith('@auth.octominds.invalid');
         if(legacy?!/^\d{6}$/.test(values.password):values.password.length<12)throw Error(legacy?'Use a six-digit PIN.':'Use at least 12 characters.');
-        await auth('/user',{password:values.password},'PUT');$('#editor').close();notify('Your sign-in has been updated.');return;
+        await auth('/user',{password:values.password,current_password:values.current_password},'PUT');$('#editor').close();notify('Your sign-in has been updated.');return;
       }
       if(['invite','grant'].includes(context.kind)){
         values.branch_id=['super_admin','management'].includes(values.role)?null:context.branch;
@@ -222,7 +221,7 @@
     try{const body=action==='status'?{user_id:id,is_active:!access.users.find(u=>u.id===id).is_active}:{id};await api(`/school/access/${action}`,body);await load();notify('Access updated.');}catch(error){notify(error.message);}finally{buttonEl.disabled=false;}
   });
   $('#centerSelect').addEventListener('change',event=>{selected=event.target.value;render();});
-  window.addEventListener('hashchange',()=>{const params=new URLSearchParams(location.hash.slice(1));if(params.has('invite')||params.has('access_token')){location.reload();return;}if(user){render();$('#main').focus();}});
+  window.addEventListener('hashchange',()=>{const params=new URLSearchParams(location.hash.slice(1));if(params.has('invite')||params.has('confirm')||params.has('recovery')){location.reload();return;}if(user){render();$('#main').focus();}});
   document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',event=>{if(d.querySelector('button[type=submit]:disabled'))event.preventDefault();}));
   $('#copyInvite').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#inviteLink').value);notify('Invitation link copied.');}catch{$('#inviteLink').select();notify('Select and copy the invitation link.');}});
   async function logout(scope='local'){
@@ -242,36 +241,41 @@
       await enter();$('#password').value='';$('#authMessage').textContent='';
     }catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
   });
-  // Keep the previously allowlisted email callback; the server redirects it to /school.
   $('#createAccount').addEventListener('click',async event=>{
-    if(!sessionStorage.getItem(INVITE)){$('#authMessage').textContent='Ask your school administrator for an invitation link first.';return;}
-    const email=$('#identity').value.trim(),password=$('#password').value;
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<12){$('#authMessage').textContent='Enter the invited email and a password of at least 12 characters above.';return;}
+    const email=$('#identity').value.trim(), invitation_token=sessionStorage.getItem(INVITE);
+    if(!invitation_token){$('#authMessage').textContent='Ask your school administrator for an invitation link first.';return;}
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){$('#authMessage').textContent='Enter your invited email address above.';return;}
     event.target.disabled=true;
-    try{const result=await auth(`/signup?redirect_to=${encodeURIComponent(location.origin+'/school.html')}`,{email,password});if(result.access_token){saveSession(result,false);await enter();}else $('#authMessage').textContent='Check your email to confirm your account, then return to this invitation and sign in.';}
+    try{await auth('/signup',{email,invitation_token});$('#authMessage').textContent='Check your email for a link to confirm your address and set your password. If you already have an account, sign in to accept.';}
     catch(error){$('#authMessage').textContent=error.message;}finally{event.target.disabled=false;}
   });
   $('#recover').addEventListener('click',async event=>{
     const email=$('#identity').value.trim();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.endsWith('@auth.octominds.invalid')){$('#authMessage').textContent='Enter your email above for password recovery. For a mobile PIN account, contact an authorized administrator.';return;}
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.endsWith('@auth.octominds.invalid')){$('#authMessage').textContent='Enter your email above. For mobile PIN accounts, contact your school.';return;}
     event.target.disabled=true;
-    try{await auth(`/recover?redirect_to=${encodeURIComponent(location.origin+'/school.html')}`,{email});$('#authMessage').textContent='If this account exists, a password reset email will arrive shortly.';}catch(error){$('#authMessage').textContent=error.message;}finally{event.target.disabled=false;}
+    try{await auth('/recover',{email});$('#authMessage').textContent='If this account exists, a password reset email will arrive shortly.';}catch(error){$('#authMessage').textContent=error.message;}finally{event.target.disabled=false;}
   });
   $('#resetForm').addEventListener('submit',async event=>{
     event.preventDefault();event.submitter.disabled=true;
-    try{if($('#newPassword').value!==$('#confirmPassword').value)throw Error('Passwords do not match.');await auth('/user',{password:$('#newPassword').value},'PUT');resetAuth();await enter();}
-    catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
+    try{
+      if($('#newPassword').value!==$('#confirmPassword').value)throw Error('Passwords do not match.');
+      const result=await auth('/reset',{code:emailCode,password:$('#newPassword').value});
+      emailCode=null;saveSession(result,false);resetAuth();
+      try{await enter();}catch(error){$('#authMessage').textContent=error.status===403?'Password saved. Open your original school invitation to finish joining.':error.message;}
+    }catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
   });
   $('#dismissInvitation').addEventListener('click',()=>{sessionStorage.removeItem(INVITE);$('#dismissInvitation').hidden=true;clearSession();$('#authDescription').textContent='Sign in with your email and password or your existing mobile number and PIN.';$('#authMessage').textContent='Invitation dismissed. Sign in to access your existing account.';});
   async function start(){
     try{
       const hash=new URLSearchParams(location.hash.slice(1));
-      if(hash.has('invite')){const token=hash.get('invite');if(!/^[a-f0-9]{64}$/.test(token))throw Error('This invitation link is invalid.');sessionStorage.setItem(INVITE,token);history.replaceState(null,'',location.pathname+'#/overview');$('#authDescription').textContent='Sign in with the invited email, or enter it with a new password and choose Create invited account.';}
-      if(hash.has('access_token')){
-        saveSession({access_token:hash.get('access_token'),refresh_token:hash.get('refresh_token'),expires_at:Math.floor(Date.now()/1000)+Number(hash.get('expires_in')||3600)},false);
-        history.replaceState(null,'',location.pathname+'#/overview');
-        if(hash.get('type')==='recovery'){$('#signInForm').hidden=true;$('.auth-actions').hidden=true;$('#resetForm').hidden=false;$('#authTitle').textContent='Set a new password';return;}
-      }else session=JSON.parse(sessionStorage.getItem(KEY)||localStorage.getItem(KEY)||'null');
+      if(hash.has('invite')){const token=hash.get('invite');if(!/^[a-f0-9]{64}$/.test(token))throw Error('This invitation link is invalid.');sessionStorage.setItem(INVITE,token);history.replaceState(null,'',location.pathname+'#/overview');$('#authDescription').textContent='Sign in with the invited email, or enter the invited email and choose Create invited account.';}
+      const emailLink=hash.get('confirm')||hash.get('recovery');
+      if(emailLink){
+        if(!/^[A-Za-z0-9_-]{32,128}$/.test(emailLink))throw Error('This email link is invalid.');
+        emailCode=emailLink;history.replaceState(null,'',location.pathname+'#/overview');
+        $('#signInForm').hidden=true;$('.auth-actions').hidden=true;$('#resetForm').hidden=false;$('#authTitle').textContent='Set a new password';return;
+      }
+      session=JSON.parse(sessionStorage.getItem(KEY)||localStorage.getItem(KEY)||'null');
       $('#dismissInvitation').hidden=!sessionStorage.getItem(INVITE);
       if(session)await enter();
     }catch(error){$('#authMessage').textContent=error.message;}

@@ -1709,36 +1709,3 @@ dialog::backdrop {
     min-height: 120px;
   }
 }
-.gallery-cleanup {
-  padding: 16px 20px;
-  background: #fff0d0;
-  border: 1px solid #dbc58d;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  font-size: 14px;
-  color: #5b481e;
-  margin-bottom: 22px;
-}
-.gallery-cleanup button {
-  flex-shrink: 0;
-}
-.cleanup-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 15px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-}
-@media (max-width: 740px) {
-  .gallery-cleanup {
-    display: block;
-  }
-  .gallery-cleanup button {
-    margin-top: 12px;
-  }
-}

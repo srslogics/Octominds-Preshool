@@ -1,5 +1,5 @@
 import { createPreview } from "./parents-preview.js?v=2";
-import { createGallery } from "./parents-gallery.js?v=1";
+import { createGallery } from "./parents-gallery.js?v=2";
 const $ = (s) => document.querySelector(s);
 const cfg = window.OCTOMINDS_CONFIG || {};
 const KEY = "octominds.inventory.session";
@@ -158,14 +158,9 @@ function clearSession() {
   $("#editor").close();
 }
 async function auth(path, body, token) {
-  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey)
-    throw Error(
-      "School sign-in is not configured yet. Please contact your school. You can explore the preview below.",
-    );
-  const response = await fetch(`${cfg.supabaseUrl}/auth/v1${path}`, {
+  const response = await fetch(`${cfg.apiBaseUrl || location.origin}/api/v1/auth${path}`, {
     method: "POST",
     headers: {
-      apikey: cfg.supabaseAnonKey,
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },

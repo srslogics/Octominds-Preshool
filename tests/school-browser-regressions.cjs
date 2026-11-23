@@ -12,6 +12,15 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
  let role='super_admin', conflict=false, delay=0, reject=false;
  const workspace={school:[{id:'s',name:'OctoMinds Preschool',version:1}],centers:[{id:'a',name:'Green Park',code:'GP',timezone:'Asia/Kolkata',working_days:[1,2,3,4,5],is_active:true,version:1},{id:'b',name:'Lake Road',code:'LR',timezone:'Asia/Kolkata',working_days:[1,2,3,4,5],is_active:true,version:1}],years:[{id:'y',branch_id:'a',name:'2026–27',starts_on:'2026-04-01',ends_on:'2027-03-31',status:'active',version:1},{id:'old',branch_id:'a',name:'2025–26',status:'closed',version:1}],terms:[],programs:[{id:'p',branch_id:'a',name:'Nursery',description:'Learning through play',is_active:true,version:1},{id:'bp',branch_id:'b',name:'Kindergarten',is_active:true,version:1}],classes:[{id:'c',branch_id:'a',name:'Nursery',section:'A',academic_year_id:'y',program_id:'p',room:'Sunflower',capacity:24,is_active:true,version:1},{id:'closed',branch_id:'a',name:'Historical class',section:'A',academic_year_id:'old',program_id:'p',capacity:20,is_active:true,version:1}],assignments:[],holidays:[],memberships:[{id:'m',user_id:'owner',role:'super_admin',branch_id:null,is_active:true}]};
  const directory={users:[{id:'owner',full_name:'School Owner',email:'owner@test.invalid',is_active:true},{id:'teacher',full_name:'Anika Sharma',email:'teacher@test.invalid',is_active:true}],memberships:[...workspace.memberships,{id:'tm',user_id:'teacher',role:'teacher',branch_id:'a',is_active:true}],invitations:[],audit:[]};
+ const existingParent = {id:'parent',full_name:'Existing Parent',phone:'9000000001',is_active:true};
+ directory.users.push(existingParent);
+ workspace.students = [{
+   id:'student-with-old-data',full_name:'Example Student',branch_id:'a',class_id:'c',
+   guardian:{full_name:'Invited Parent',phone:'9000000001',relationship:'9000000002'},
+ },{
+   id:'student-with-existing-parent',full_name:'Second Student',branch_id:'a',class_id:'c',
+   guardian:{full_name:existingParent.full_name,phone:existingParent.phone,relationship:'Mother'},
+ }];
  await page.route('**/config.js',r=>r.fulfill({contentType:'application/javascript',body:`window.OCTOMINDS_CONFIG={apiBaseUrl:'${origin}'};`}));
  await page.route('**/api/v1/auth/**',r=>{requests.push(r.request().url());return r.fulfill({json:{access_token:'test',refresh_token:'refresh',expires_at:Math.floor(Date.now()/1000)+3600}});});
  await page.route('**/api/v1/**',async r=>{
@@ -61,6 +70,43 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
  await page.locator('[name=role]').selectOption('teacher');await page.locator('#editorForm button[type=submit]').click();await page.locator('#resultDialog').waitFor();assert.equal(writes.at(-1).body.branch_id,'a');assert.ok((await page.locator('#inviteLink').inputValue()).endsWith('#invite='+'a'.repeat(64)));await page.locator('#resultDialog [data-close]').click();
  assert.equal(await page.getByRole('button',{name:'Invitations',exact:true}).getAttribute('aria-pressed'),'true');
  pass('invitations require an explicit role and open the Invitations view');
+ await page.locator('[data-action=invite]').click();
+ await page.getByLabel('Role',{exact:true}).selectOption('parent');
+ await page.getByLabel('Student',{exact:true}).selectOption('student-with-old-data');
+ const relationship = page.getByLabel('Relationship',{exact:true});
+ assert.equal(await relationship.inputValue(),'');
+ await page.getByText('The saved relationship is invalid.',{exact:false}).waitFor();
+ assert.equal(await page.getByLabel('Full name',{exact:true}).inputValue(),'Invited Parent');
+ const phone = page.getByLabel('Mobile number',{exact:true});
+ assert.equal(await phone.inputValue(),'9000000001');
+ const writesBeforeInvitation = writes.length;
+ await relationship.selectOption('other');
+ await page.getByLabel('Specify the relationship').fill('9000000002');
+ await page.getByRole('button',{name:'Create invitation',exact:true}).click();
+ await page.locator('#formError').filter({hasText:'Enter a relationship such as Mother, Father, or Guardian.'}).waitFor();
+ await relationship.selectOption('Mother');
+ await phone.fill('+91 90000 00001');
+ await page.getByRole('button',{name:'Create invitation',exact:true}).click();
+ await page.locator('#formError').filter({hasText:'This mobile number is registered to Existing Parent.'}).waitFor();
+ assert.equal(writes.length,writesBeforeInvitation);
+ await phone.fill('9000000002');
+ await page.getByRole('button',{name:'Create invitation',exact:true}).click();
+ await page.locator('#resultDialog').waitFor();
+ assert.equal(writes.at(-1).body.relationship,'Mother');
+ assert.equal(writes.at(-1).body.phone,'9000000002');
+ await page.locator('#resultDialog [data-close]').click();
+ await page.locator('[data-action=grant]').click();
+ await page.getByLabel('Role',{exact:true}).selectOption('parent');
+ await page.getByLabel('Student',{exact:true}).selectOption('student-with-old-data');
+ assert.equal(await page.getByLabel('Account',{exact:true}).inputValue(),'');
+ await page.getByLabel('Student',{exact:true}).selectOption('student-with-existing-parent');
+ assert.equal(await page.getByLabel('Account',{exact:true}).inputValue(),existingParent.id);
+ assert.equal(await relationship.inputValue(),'Mother');
+ await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.locator('#editor').evaluate(dialog=>dialog.scrollWidth<=dialog.clientWidth),true);
+ await page.locator('#editor [data-close]').first().click();
+ await page.setViewportSize({width:1440,height:960});
+ pass('parent invitations reject bad saved relationships and mismatched mobile accounts');
  const centers=workspace.centers;
  workspace.centers=[];
  await page.locator('[data-action=reload]').click();

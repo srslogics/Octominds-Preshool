@@ -225,16 +225,22 @@ class TursoWorkflows(unittest.TestCase):
         self.assertEqual(set(profile['branch_roles']), {self.center, self.other_center})
 
     def test_enrollment_details_prefill_and_mobile_invitation_connects_child(self):
-        student = self.request('POST', '/parents/students', self.owner, {
+        enrollment = {
             'branch_id': self.center, 'class_id': self.classroom, 'full_name': 'New Student',
             'guardian': {'full_name': 'New Guardian', 'phone': '+91 98765 43210', 'relationship': 'Mother'},
-        }).json()
+        }
+        self.request('POST', '/parents/students', self.owner, {
+            **enrollment, 'guardian': {**enrollment['guardian'], 'relationship': '+91 (90000) 00002'},
+        }, code=422)
+        student = self.request('POST', '/parents/students', self.owner, enrollment).json()
         self.assertEqual(self.request('GET', '/school/workspace', self.teacher).json()['students'], [])
         enrollments = self.request('GET', '/school/workspace', self.owner).json()['students']
         self.assertEqual(next(row for row in enrollments if row['id'] == student['id'])['guardian'],
                          {'full_name': 'New Guardian', 'phone': '9876543210', 'email': None, 'relationship': 'Mother'})
         invitation = {'role': 'parent', 'full_name': 'New Guardian', 'phone': '9876543210',
                       'student_id': student['id'], 'relationship': 'Mother'}
+        self.request('POST', '/school/access/invite', self.owner,
+                     {**invitation, 'branch_id': self.center, 'relationship': 'guardian@example.invalid'}, code=422)
         self.request('POST', '/school/access/invite', self.owner,
                      {**invitation, 'branch_id': self.other_center}, code=422)
         result = self.request('POST', '/school/access/invite', self.owner,
@@ -259,10 +265,12 @@ class TursoWorkflows(unittest.TestCase):
         students = self.request('GET', '/school/workspace', self.owner).json()['students']
         self.assertIsNone(next(row for row in students if row['id'] == self.child)['guardian'])
         parent_id = self.request('GET', '/session', self.unlinked).json()['id']
-        self.request('POST', '/school/access/grant', self.owner, {
+        grant = {
             'branch_id': self.center, 'role': 'parent', 'user_id': parent_id,
             'student_id': self.child, 'relationship': 'Guardian',
-        })
+        }
+        self.request('POST', '/school/access/grant', self.owner, {**grant, 'relationship': '9000000002'}, code=422)
+        self.request('POST', '/school/access/grant', self.owner, grant)
         children = self.request('GET', '/parents/workspace', self.unlinked).json()['students']
         self.assertEqual([row['id'] for row in children], [self.child])
 

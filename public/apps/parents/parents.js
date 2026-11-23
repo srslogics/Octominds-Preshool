@@ -670,7 +670,10 @@ $("#editorForm").addEventListener("submit", async (event) => {
         is_active: event.target.elements.is_active.checked,
       });
     } else if (context.kind === "guardian") {
-      await api("/guardians", { ...values, is_active: true });
+      const relationship = values.relationship.trim();
+      if (!/\p{L}/u.test(relationship) || relationship.includes("@"))
+        throw Error("Enter a relationship such as Mother, Father, or Guardian.");
+      await api("/guardians", { ...values, relationship, is_active: true });
     } else {
       await api("/posts", {
         ...values,

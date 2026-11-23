@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import Field, model_validator
 
 from ..auth import CurrentUser, get_current_user
-from ..school.router import EnrollmentGuardian, Fields, SchoolRepository, repository
+from ..school.router import EnrollmentGuardian, Fields, SchoolRepository, repository, validate_relationship
 
 router = APIRouter(prefix='/api/v1/parents', tags=['parents'])
 User = Annotated[CurrentUser, Depends(get_current_user)]
@@ -35,6 +35,12 @@ class Guardian(Fields):
     user_id: UUID
     relationship: str = Field(min_length=1, max_length=40)
     is_active: bool = True
+
+    @model_validator(mode='after')
+    def check_relationship(self):
+        if self.is_active:
+            validate_relationship(self.relationship)
+        return self
 
 
 class Post(Fields):

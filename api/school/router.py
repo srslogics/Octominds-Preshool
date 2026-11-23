@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from ..auth import MOBILE_LOGIN_SUFFIX, CurrentUser, Role, bearer, get_current_user, normalize_mobile
 from ..config import Settings, get_settings
@@ -126,8 +126,17 @@ class Recipient(Fields):
         return self
 
 
+def validate_relationship(value: str) -> str:
+    if '@' in value or not any(char.isalpha() for char in value):
+        raise ValueError('Enter a relationship such as Mother, Father, or Guardian.')
+    return value
+
+
+GuardianRelationship = Annotated[str, Field(min_length=1, max_length=40), AfterValidator(validate_relationship)]
+
+
 class EnrollmentGuardian(Recipient):
-    relationship: str = Field(min_length=1, max_length=40)
+    relationship: GuardianRelationship
 
 
 class StudentAccess(Fields):
@@ -135,7 +144,7 @@ class StudentAccess(Fields):
     branch_id: UUID | None = None
     expires_at: datetime | None = None
     student_id: UUID | None = None
-    relationship: str | None = Field(None, min_length=1, max_length=40)
+    relationship: GuardianRelationship | None = None
 
     @model_validator(mode='after')
     def validate_student(self):

@@ -350,6 +350,19 @@
   const text=(key,label,type='text',required=true)=>({key,label,type,required});
   const select=(key,label,options,placeholder='')=>({key,label,type:'select',options,required:true,placeholder});
   const signInMethods = [['mobile','Mobile number'],['email','Email address']];
+  const relationships = ['Mother','Father','Parent','Guardian','Grandparent','Aunt','Uncle'];
+  const relationshipFields = [
+    {...select('relationship','Relationship', [...relationships.map(value => [value,value]),['other','Other']], 'Choose a relationship'), required:false},
+    text('other_relationship','Specify the relationship','text',false),
+  ];
+  const validRelationship = value => Boolean(value && /\p{L}/u.test(value) && !value.includes('@'));
+  const sameName = (left, right) => left.trim().replace(/\s+/g, ' ').toLowerCase() === right.trim().replace(/\s+/g, ' ').toLowerCase();
+  const mobileNumber = value => value?.replace(/[\s()-]/g, '').match(/^(?:\+?91)?([6-9]\d{9})$/)?.[1];
+  function recipientAccount(phone, email) {
+    const number = mobileNumber(phone);
+    const address = email?.trim().toLowerCase();
+    return access?.users.find(person => number ? person.phone === number : address && person.email?.toLowerCase() === address);
+  }
   const enrollmentOptions = () => rows('students').map(student => {
     const classroom = data.classes.find(record => record.id === student.class_id);
     return [student.id, [student.full_name, classroom && className(classroom), student.guardian?.full_name].filter(Boolean).join(' · ')];
@@ -380,8 +393,8 @@
     const dates=[text('starts_on','Start date','date'),text('ends_on','End date','date')];
     const roles=Object.entries(labels).filter(([role]) => mayGrant(role) && (workingCenter()?.is_active || ['super_admin','management'].includes(role)));
     const familyFields = [
-      {...select('student_id','Student',enrollmentOptions(),'Choose a student (optional)'),required:false},
-      text('relationship','Relationship','text',false),
+      {...select('student_id','Student',enrollmentOptions(),'Choose a student (optional)'),required:false,wide:true},
+      ...relationshipFields,
     ];
     const fields={
       school:[text('name','School name'),text('email','Contact email','email',false),text('phone','Phone','tel',false),text('address','Address','textarea',false),text('website','Website','url',false)],
@@ -394,7 +407,7 @@
         text('guardian_name','Parent or guardian name','text',false),
         select('method','Parent sign-in method',signInMethods),
         text('phone','Mobile number','tel',false),text('email','Email address','email',false),
-        text('relationship','Relationship','text',false)],
+        ...relationshipFields],
       assignments:[select('class_id','Class',options('classes')),select('user_id','Teacher',teachers()),text('starts_on','Start date','date'),text('ends_on','End date for temporary cover','date',false),select('is_active','Status',active)],
       holidays:[text('name','Holiday name'),...dates,select('is_active','Status',active)],
       invite:[select('role','Role',roles,'Choose a role'),...familyFields,text('full_name','Full name'),
@@ -417,6 +430,20 @@
     toggleField($('#field-email'), !mobile, !isEnrollment);
     toggleField($('#field-phone'), mobile, !isEnrollment);
   }
+  function updateRelationship(visible) {
+    const relationship = $('#field-relationship');
+    toggleField(relationship, visible, visible && editing.kind !== 'student');
+    toggleField($('#field-other_relationship'), visible && relationship.value === 'other');
+  }
+  function prefillRelationship(saved) {
+    const value = saved?.trim();
+    const choice = validRelationship(value) ? relationships.find(item => sameName(item, value)) || 'other' : '';
+    $('#field-relationship').value = choice;
+    $('#field-other_relationship').value = choice === 'other' ? value : '';
+    $('#relationshipHint').textContent = value && !choice
+      ? 'The saved relationship is invalid. Choose a relationship and check the guardian’s contact details.'
+      : '';
+  }
   function updateAccessFields(kind, changed = '') {
     const parent = $('#field-role').value === 'parent';
     const studentField = $('#field-student_id');
@@ -424,9 +451,8 @@
     if (!parent) studentField.value = '';
     const guardian = rows('students').find(student => student.id === studentField.value)?.guardian;
     toggleField(studentField, parent, false);
-    toggleField($('#field-relationship'), parent && Boolean(studentField.value));
     if (changed === 'student_id' || droppedStudent) {
-      $('#field-relationship').value = guardian?.relationship || '';
+      prefillRelationship(guardian?.relationship);
       if (kind === 'invite') {
         $('#field-method').value = guardian?.email ? 'email' : 'mobile';
         $('#field-full_name').value = guardian?.full_name || '';
@@ -434,11 +460,12 @@
         $('#field-email').value = guardian?.email || '';
       }
       if (kind === 'grant') {
-        const account = guardian && access.users.find(person => person.id !== user.id && person.is_active &&
-          (guardian.phone ? person.phone === guardian.phone : person.email === guardian.email));
-        $('#field-user_id').value = account?.id || '';
+        const account = guardian && recipientAccount(guardian.phone, guardian.email);
+        const eligible = account?.is_active && account.id !== user.id && sameName(account.full_name, guardian.full_name);
+        $('#field-user_id').value = eligible ? account.id : '';
       }
     }
+    updateRelationship(parent && Boolean(studentField.value));
     if (kind === 'invite') {
       const method = $('#field-method');
       if (!parent || changed === 'role') method.value = parent ? 'mobile' : 'email';
@@ -470,7 +497,8 @@
       if(f.type==='select')control=`<select id="${fieldId}" name="${f.key}" ${f.required?'required':''}>${f.placeholder||!f.options.length?`<option value="">${f.placeholder||'No available records'}</option>`:''}${f.options.map(([v,label])=>`<option value="${esc(v)}" ${String(value)===String(v)?'selected':''}>${esc(label)}</option>`).join('')}</select>`;
       else if(f.type==='textarea')control=`<textarea id="${fieldId}" name="${f.key}" maxlength="1000">${esc(value)}</textarea>`;
       else control=`<input id="${fieldId}" name="${f.key}" type="${f.type}" value="${esc(value)}" ${f.required?'required':''} ${f.type==='number'?'min="0" max="100000" step="1"':''} ${f.type==='password'?'autocomplete="new-password" minlength="6"':'maxlength="500"'}>`;
-      return `<div class="form-field${f.type==='textarea'?' wide':''}"><label for="${fieldId}">${esc(f.label)}</label>${control}</div>`;
+      const hint = f.key === 'relationship' ? '<small id="relationshipHint" class="tip" aria-live="polite"></small>' : '';
+      return `<div class="form-field${f.wide || f.type==='textarea'?' wide':''}"><label for="${fieldId}">${esc(f.label)}</label>${control}${hint}</div>`;
     }).join('');
     if (['invite','student'].includes(kind)) {
       const phone = $('#field-phone');
@@ -486,10 +514,12 @@
       name.autofocus = true;
       $('#field-guardian_name').maxLength = 120;
       updateContactFields(true);
+      updateRelationship(true);
     }
     if ($('#field-relationship')) {
-      $('#field-relationship').maxLength = 40;
-      $('#field-relationship').placeholder = 'e.g. Mother, Father, Guardian';
+      $('#field-relationship').setAttribute('aria-describedby', 'relationshipHint');
+      $('#field-other_relationship').maxLength = 40;
+      $('#field-other_relationship').autocomplete = 'off';
     }
     $('#editor').showModal();
   }
@@ -499,6 +529,10 @@
       updateAccessFields(editing.kind, field);
     }
     if (editing?.kind==='student' && field==='method') updateContactFields(true);
+    if (field === 'relationship') {
+      $('#relationshipHint').textContent = '';
+      updateRelationship(true);
+    }
   });
   $('#editorForm').addEventListener('submit',async event=>{
     event.preventDefault();const context=editing;const button=event.submitter;button.disabled=true;$('#formError').textContent='';
@@ -515,6 +549,11 @@
         values[f.key]=value;
       }
       if(values.ends_on&&values.starts_on&&values.ends_on<values.starts_on)throw Error('End date cannot be before start date.');
+      if (values.relationship === 'other') values.relationship = values.other_relationship?.trim() || null;
+      delete values.other_relationship;
+      if (values.relationship && !validRelationship(values.relationship)) {
+        throw Error('Enter a relationship such as Mother, Father, or Guardian.');
+      }
       if (context.classroom) {
         const studentName = values.full_name?.trim();
         if (!studentName) throw Error('Enter the student’s full name.');
@@ -525,7 +564,7 @@
         if (hasGuardian && !(guardianName && recipient && relationship)) {
           throw Error('Enter the parent’s name, contact and relationship, or leave the parent details blank.');
         }
-        if (hasGuardian && values.method === 'mobile' && !/^(?:\+?91)?[6-9]\d{9}$/.test(recipient.replace(/[\s()-]/g, ''))) {
+        if (hasGuardian && values.method === 'mobile' && !mobileNumber(recipient)) {
           throw Error('Enter a 10-digit Indian mobile number for the parent.');
         }
         await api('/parents/students', {
@@ -553,6 +592,13 @@
         }
         values.branch_id=schoolWide?null:context.branch;
         const inviteByMobile = context.kind === 'invite' && values.method === 'mobile';
+        if (context.kind === 'invite' && values.student_id) {
+          const account = recipientAccount(values.phone, values.email);
+          if (account && !sameName(account.full_name, values.full_name)) {
+            const contactType = inviteByMobile ? 'mobile number' : 'email address';
+            throw Error(`This ${contactType} is registered to ${account.full_name}. Check the guardian’s contact details or select that person under Assign existing account.`);
+          }
+        }
         delete values.method;
         const result=await api(`/school/access/${context.kind}`,values);
         accessSection = context.kind==='invite' ? 'invitations' : 'members';

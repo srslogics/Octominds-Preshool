@@ -220,7 +220,9 @@ def feed(access, p_student, p_kind='all', p_page=1):
 def recent_posts(access, child, kind='all', limit=20, offset=0, *, include_total=False):
     clause = 'where p.is_published=1 and p.class_id=? and (p.student_id is null or p.student_id=?)'
     args = [child['class_id'], child['id']]
-    if kind != 'all':
+    if kind == 'circulars':
+        clause += " and p.kind in ('notice', 'event')"
+    elif kind != 'all':
         clause += ' and p.kind=?'
         args.append(kind)
     rows = access.db.all('''select p.*,a.full_name author_name from parent_posts p join profiles a on a.id=p.created_by '''
@@ -249,17 +251,18 @@ def send_message(access, p_student, p_body):
     return {'id': item['id']}
 
 
-def calendar(access, p_student, p_month):
+def calendar(access, p_student, p_month, p_include_next_month=False):
     child = require_child(access, p_student)
-    return child_calendar(access.db, child, p_month)
+    return child_calendar(access.db, child, p_month, p_include_next_month)
 
 
-def child_calendar(db, child, month):
+def child_calendar(db, child, month, include_next_month=False):
+    span = '+2 months' if include_next_month else '+1 month'
     events = db.all("""select id,title,body,event_date from parent_posts where is_published=1
         and kind='event' and class_id=? and (student_id is null or student_id=?)
-        and event_date>=date(?,'start of month') and event_date<date(?,'start of month','+1 month')
-        order by event_date,id""", (child['class_id'], child['id'], month, month))
+        and event_date>=date(?,'start of month') and event_date<date(?,'start of month',?)
+        order by event_date,id""", (child['class_id'], child['id'], month, month, span))
     holidays = db.all("""select id,name,starts_on,ends_on from school_holidays where is_active=1 and branch_id=?
-        and ends_on>=date(?,'start of month') and starts_on<date(?,'start of month','+1 month') order by starts_on,id""",
-        (child['branch_id'],month,month))
+        and ends_on>=date(?,'start of month') and starts_on<date(?,'start of month',?) order by starts_on,id""",
+        (child['branch_id'], month, month, span))
     return {'events': events, 'holidays': holidays}

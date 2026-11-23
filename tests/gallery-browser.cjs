@@ -25,6 +25,12 @@ watchdog.unref();
     requests = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("dialog", (d) => d.accept());
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "canShare", { value: ({ files }) => files?.length === 1 });
+    Object.defineProperty(navigator, "share", { value: async ({ files }) => {
+      window.previewSharedFile = { name: files[0].name, size: files[0].size };
+    } });
+  });
   await page.route("**/api/**", (r) => {
     requests.push(r.request().url());
     return r.abort();
@@ -71,9 +77,15 @@ watchdog.unref();
       .count(),
     0,
   );
-  await page.locator("[data-gallery-photo]").first().click();
+  await page.locator(".album-card").filter({ has: page.getByRole("heading", { name: "Our colour explorers", exact: true }) })
+    .getByRole("button", { name: "View album", exact: true }).click();
   await page.locator("#photoStage img").waitFor();
   await page.getByText("1 of 3", { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.previewSharedFile), undefined);
+  await page.getByRole("button", { name: "Share photo", exact: true }).click();
+  const shared = await page.evaluate(() => window.previewSharedFile);
+  assert.match(shared.name, /^octominds-.*\.svg$/);
+  assert.ok(shared.size > 0);
   await page.getByRole("button", { name: "Next photo", exact: true }).click();
   await page.getByText("2 of 3", { exact: true }).waitFor();
   await page.locator("#photoStage img").waitFor();

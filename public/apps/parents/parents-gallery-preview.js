@@ -23,7 +23,8 @@ export function previewGallery({
         student_id: null,
         title: "Our colour explorers",
         description: "A morning of colour, curiosity, and little discoveries.",
-        taken_on: day(-1),
+        taken_on: day(0),
+        symbol: "🎨",
         status: "published",
         photos: [
           { id: id(81), caption: "Mixing a little magic", status: "ready" },
@@ -33,6 +34,16 @@ export function previewGallery({
             status: "ready",
           },
           { id: id(83), caption: "Discoveries in the garden", status: "ready" },
+        ],
+      },
+      {
+        id: id(86), class_id: classA, student_id: null,
+        title: "Garden Bugs & Sandpit Discoveries", symbol: "🌿", taken_on: day(-3),
+        description: "A closer look at the little things we found outdoors.", status: "published",
+        photos: [
+          { id: id(87), caption: "A green garden discovery", status: "ready" },
+          { id: id(88), caption: "Patterns in the sand", status: "ready" },
+          { id: id(89), caption: "Looking at nature up close", status: "ready" },
         ],
       },
       {
@@ -69,6 +80,9 @@ export function previewGallery({
   );
   images.set(id(83), leaves);
   images.set(id(85), leaves);
+  images.set(id(87), leaves);
+  images.set(id(88), art("Patterns in the sand", "#ffe29e", '<path d="M80 385q100-195 205 0t205 0t205 0" fill="none" stroke="#f1a563" stroke-width="45" stroke-linecap="round"/>'));
+  images.set(id(89), art("A closer look", "#c7f1ed", '<circle cx="400" cy="278" r="140" fill="#97d9c9" stroke="#438b7d" stroke-width="30"/><path d="M500 385l145 100" stroke="#438b7d" stroke-width="50" stroke-linecap="round"/>'));
   function find(albumId) {
     const a = albums.find((a) => a.id === albumId);
     if (!a) throw Error("Album unavailable.");

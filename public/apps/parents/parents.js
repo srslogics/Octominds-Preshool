@@ -1,4 +1,6 @@
-import { createGallery } from "./parents-gallery.js?v=4";
+import { renderFamilyFeed } from "./parents-feeds.js?v=1";
+import { createSchoolCalendar } from "./parents-calendar.js?v=1";
+import { createGallery } from "./parents-gallery.js?v=6";
 const $ = (s) => document.querySelector(s);
 const cfg = window.OCTOMINDS_CONFIG || {};
 const sessions = window.OctomindsSession;
@@ -35,38 +37,39 @@ const labels = {
   diary: "Daily diary",
   event: "School event",
 };
+const postSymbols = { notice: "📬", homework: "📚", diary: "🎨", event: "🗓️" };
 const pages = {
   today: [
     "Today at School",
     "Catch up on class updates and what’s coming up next.",
   ],
   updates: [
-    "School updates",
-    "Notices, activities, and events from your school team.",
+    "School Updates",
+    "Circulars and notices from your school team.",
   ],
   homework: [
-    "Home learning",
-    "Activities from the classroom to try together at home.",
+    "Play & Learn at Home",
+    "Simple activities to enjoy together.",
   ],
   diary: [
-    "Daily diary",
+    "Daily Diary",
     "Notes about your child’s school day.",
   ],
   calendar: [
-    "Calendar",
+    "School Calendar",
     "Class events and school holidays.",
   ],
   messages: [
-    "Ask the school",
-    "Send a message to your child’s school team.",
+    "Ask the School",
+    "A shared conversation with your school team.",
   ],
   child: [
     "My Child",
     "Class details and family access.",
   ],
   gallery: [
-    "Photo gallery",
-    "Albums shared with your family by the school team.",
+    "Photo Gallery",
+    "Albums shared privately with your family.",
   ],
   "school-albums": [
     "School albums",
@@ -84,8 +87,6 @@ let session = null,
   generation = 0,
   epoch = 0,
   page = 1,
-  month = firstDay(),
-  chosenDay = isoDate(new Date()),
   editing = null,
   messageDraft = null,
   refreshing = null,
@@ -139,6 +140,8 @@ function setPasswordVisibility(visible) {
   toggle.firstChild.textContent = visible ? "Hide" : "Show";
 }
 function clearSession() {
+  calendarView.reset();
+  sampleAcknowledgments.clear();
   gallery.reset();
   epoch++;
   generation++;
@@ -311,6 +314,7 @@ function navigation() {
     .join("");
 }
 async function loadWorkspace(initialData) {
+  calendarView.reset();
   const version = ++generation;
   $("#content").innerHTML = loading();
   try {
@@ -338,25 +342,17 @@ function showError(error) {
   $("#content").innerHTML =
     `<div class="error" role="alert"><h2>We couldn’t load this just now.</h2><p>${esc(error.message)}</p><button type="button" data-retry>Try again</button></div>`;
 }
-function postCard(p) {
-  return `<article class="post-card"><div class="post-head"><span class="badge ${esc(p.kind)}">${icon(p.kind === "notice" ? "updates" : p.kind === "event" ? "calendar" : p.kind)}${esc(labels[p.kind] || p.kind)}</span><time class="post-meta" datetime="${esc(p.created_at)}">${esc(stamp(p.created_at))}</time></div><h2>${esc(p.title)}</h2>${p.event_date ? `<p class="support-note">${esc(formatDay(p.event_date, { weekday: "long", day: "numeric", month: "long" }))}</p>` : ""}<p class="post-body">${esc(p.body)}</p><div class="post-footer"><span class="author"><span class="avatar" aria-hidden="true">${esc(initials(p.author_name))}</span>${esc(p.author_name)}</span>${p.can_withdraw ? `<button type="button" class="quiet danger" data-withdraw="${esc(p.id)}">Withdraw</button>` : "<span>Shared with your family</span>"}</div></article>`;
-}
 function pagination(result) {
   return result.total > result.page_size
     ? `<div class="pagination"><button data-page="${page - 1}" ${page === 1 ? "disabled" : ""} aria-label="Previous page">${icon("back")}</button><span>Page ${page} of ${Math.ceil(result.total / result.page_size)}</span><button data-page="${page + 1}" ${page * result.page_size >= result.total ? "disabled" : ""} aria-label="Next page">${icon("next")}</button></div>`
     : "";
 }
-function eventRows(events) {
-  return events
-    .map(
-      (e) =>
-        `<div class="event-row"><div class="date-tile"><small>${esc(formatDay(e.event_date || e.starts_on, { month: "short" }))}</small><strong>${esc(formatDay(e.event_date || e.starts_on, { day: "numeric" }))}</strong></div><div><h3>${esc(e.title || e.name)}</h3><p>${esc(e.body || "School holiday")}${e.ends_on && e.ends_on !== e.starts_on ? ` · through ${esc(formatDay(e.ends_on))}` : ""}</p></div></div>`,
-    )
-    .join("");
-}
+const sampleAcknowledgments = new Set();
+const sectionSymbols = { updates: "📣", homework: "🧩", diary: "📖", gallery: "📸", messages: "💬" };
+const calendarView = createSchoolCalendar({ api, esc, icon, isoDate, parseDay, empty, notify: toast });
 const gallery = createGallery({
   api,
-  context: () => ({ student: child(), workspace, epoch, generation }),
+  context: () => ({ student: child(), workspace, epoch, generation, preview: Boolean(preview) }),
   esc,
   icon,
   formatDay,
@@ -372,25 +368,41 @@ async function render(initialToday) {
   navigation();
   const isProfile = r === "child";
   const isToday = r === "today" && Boolean(s);
-  $("#portal").classList.toggle("view-child", isProfile);
-  $("#portal").classList.toggle("view-today", isToday);
-  $("#childBack").hidden = !isProfile;
-  $("#childBack").href = go("today");
-  $("#childBrand").hidden = !isProfile && !isToday;
+  const isSection = r !== "today" && !isProfile;
+  const calendarExport = $("#calendarExport");
+  calendarExport.hidden = r !== "calendar" || !s;
+  calendarExport.disabled = true;
+  const showsChild = Boolean(s) && r !== "manage" && r !== "school-albums";
+  const canSwitch = showsChild && workspace.students.length > 1;
+  const portal = $("#portal");
+  portal.dataset.route = r;
+  portal.classList.toggle("view-child", isProfile);
+  portal.classList.toggle("view-today", isToday);
+  portal.classList.toggle("view-section", isSection);
+  $("#childBack").hidden = r === "today";
+  $("#childBack").href = go(r === "school-albums" ? "manage" : "today");
+  $("#childBackLabel").textContent = r === "school-albums" ? "School desk" : "Today";
+  const sectionIcon = sectionSymbols[r];
+  $("#childBrand").hidden = Boolean(sectionIcon);
+  $("#sectionSymbol").hidden = !sectionIcon;
+  $("#sectionSymbol").textContent = sectionIcon || "";
   $("#todayGreeting").hidden = !isToday;
-  $("#todayChildChoice").hidden = !isToday;
   if (isToday) {
     $("#todayGreeting").textContent = `Hello, ${firstName(user.full_name) || "there"}! 👋`;
-    $("#todayChildInitials").textContent = initials(s.full_name);
-    $("#todayChildName").textContent = firstName(s.full_name);
-    $("#todayChildArrow").hidden = workspace.students.length < 2;
   }
-  $("#childSelect").hidden = isToday && workspace.students.length < 2;
-  $("#childPickerLabel").textContent = isProfile || isToday ? "Switch child" : "Viewing for";
-  $("#childPicker").hidden =
-    ["manage", "school-albums"].includes(r) || workspace.students.length < (isProfile ? 2 : 1);
+  $("#childChoice").hidden = !showsChild;
+  if (showsChild) {
+    $("#childChoice").setAttribute("aria-hidden", String(canSwitch));
+    $("#childChoice").title = s.full_name;
+    $("#childChoiceInitials").textContent = initials(s.full_name);
+    $("#childChoiceName").textContent = canSwitch ? firstName(s.full_name) : s.full_name;
+    $("#childChoiceArrow").hidden = !canSwitch;
+  }
+  $("#childSelect").hidden = !canSwitch;
+  $("#childPicker").hidden = !showsChild || (isProfile && !canSwitch);
   $("#pageTitle").textContent = pages[r][0];
-  $("#pageDescription").textContent = isProfile || isToday ? "" : pages[r][1];
+  $("#pageDescription").textContent = isProfile || isToday ? "" :
+    r === "diary" && s ? s.full_name : r === "updates" && s?.center_name ? `${s.center_name} circulars and notices` : pages[r][1];
   $("#content").innerHTML = loading();
   try {
     let html = "";
@@ -422,7 +434,10 @@ async function render(initialToday) {
     } else if (r === "messages") {
       html = await messageScreen(s);
     } else if (r === "calendar") {
-      html = await calendarScreen(s);
+      const result = await calendarView.screen(s, Boolean(preview), () => version === generation && Boolean(user));
+      if (version !== generation || !user) return;
+      html = result.html;
+      calendarExport.disabled = !result.canExport;
     } else if (r === "today") {
       const todayMonth = firstDay();
       const [feed, calendar] = initialToday?.student_id === s.id && initialToday.month === todayMonth
@@ -433,11 +448,12 @@ async function render(initialToday) {
           ]);
       html = todayScreen(s, feed, calendar);
     } else {
-      const kind = r === "updates" ? "all" : r;
+      const kind = r === "updates" ? "circulars" : r;
       const feed = await api(
         `/children/${s.id}/posts?kind=${kind}&page=${page}`,
       );
-      html = `<div class="toolbar"><span class="count">${feed.total} ${feed.total === 1 ? "update" : "updates"} for ${esc(s.full_name)}</span><span class="spacer"></span>${s.can_publish ? '<button class="primary" data-edit="post">Share an update</button>' : ""}<button data-refresh class="secondary" aria-label="Refresh updates">Refresh</button></div>${feed.posts.map(postCard).join("") || empty(r, "Nothing shared here yet.", r === "homework" ? "When your teacher shares an activity, you’ll find it here." : "Updates from your school team will appear here. There’s nothing you need to do.")}${pagination(feed)}`;
+      html = renderFamilyFeed({ route: r, feed, student: s, preview: Boolean(preview), acknowledgments: sampleAcknowledgments,
+        esc, stamp, formatDay, go, pagination, empty });
     }
     if (version !== generation || !user) return;
     $("#content").innerHTML = html;
@@ -445,6 +461,7 @@ async function render(initialToday) {
       const input = $("#messageBody");
       if (input) {
         input.value = messageDraft.text;
+        if (messageDraft.topic) setMessageTopic(input.form, messageDraft.topic);
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
       }
@@ -459,7 +476,7 @@ const profileIcon = (emoji) => `<span aria-hidden="true">${emoji}</span>`;
 
 function todayMoment(post) {
   const feature = preview ? post.today_feature : null;
-  const symbol = feature?.symbol || { diary: "🎨", homework: "📚", notice: "📬", event: "🗓️" }[post.kind] || "✨";
+  const symbol = feature?.symbol || postSymbols[post.kind] || "✨";
   return `<article class="today-card today-moment">
     <div class="today-moment-heading">
       <span class="today-moment-icon">${profileIcon(symbol)}</span>
@@ -528,7 +545,7 @@ function todayScreen(student, feed, calendar) {
         `<div class="today-card today-routine-note"><h3>${esc(recent?.title || "Daily care notes")}</h3><p>${esc(recent?.body || "Care and routine updates appear in the Daily Diary when your school shares them.")}</p></div>`}
     </section>
     <section aria-labelledby="today-moments">
-      <div class="today-section-heading"><h2 id="today-moments">${profileIcon("🎨")} Little Moments Captured</h2><a href="${go("updates")}">View all updates →</a></div>
+      <div class="today-section-heading"><h2 id="today-moments">${profileIcon("🎨")} Little Moments Captured</h2><a href="${go("updates")}">School updates →</a></div>
       <div class="today-moments">${moments.map(todayMoment).join("") || '<div class="today-card today-routine-note"><p>School updates will appear here when they’re shared.</p></div>'}</div>
     </section>
     <div class="today-plans">
@@ -640,31 +657,50 @@ function profileScreen(s, profile = {}) {
     <a class="profile-button child-contact" href="${contact}">${profileIcon("📞")} ${officeTitle}</a>
   </div>`;
 }
+const messageTopics = {
+  teacher: ["Class teacher", "👩‍🏫", "Write a note to the school team…"],
+  care: ["Medicine / diet", "💊", "Write a care note for the school team…"],
+  transport: ["Transport / late", "🚗", "Write a transport or arrival note…"],
+};
+const messageTemplates = {
+  late: ["🚗", "Running 15m late", "transport", name => `Hello, ${name} is running about 15 minutes late today. `],
+  early: ["🕒", "Early pickup today", "transport", name => `Hello, I’d like to pick up ${name} early today. Pickup time: `],
+  care: ["💊", "Medicine note", "care", name => `Hello, I have a care note for ${name}: `],
+};
+const topicPrefix = (topic) => topic === "teacher" ? "" : `[${messageTopics[topic][0]}] `;
+function setMessageTopic(form, topic) {
+  form.dataset.topic = topic;
+  const input = form.elements.body;
+  input.placeholder = messageTopics[topic][2];
+  input.maxLength = 2000 - topicPrefix(topic).length;
+  document.querySelectorAll("[data-message-topic]").forEach(button =>
+    button.setAttribute("aria-pressed", String(button.dataset.messageTopic === topic)));
+}
 async function messageScreen(s) {
   const result = await api(`/children/${s.id}/messages?page=${page}`);
-  return `<p class="thread-note">A shared conversation about ${esc(s.full_name)}. Linked guardians and the assigned school team can read and reply. For anything urgent, contact your school directly.</p>${pagination(result)}<div class="thread">${result.messages.map((m) => `<article class="message ${m.is_own ? "own" : ""}"><strong>${esc(m.is_own ? "You" : m.author_name)}</strong><p>${esc(m.body)}</p><small>${esc(stamp(m.created_at))}</small></article>`).join("") || empty("messages", "Start a conversation.", "Ask about their day, share a little update, or let the school know what’s on your mind.")}</div>${s.is_active ? `<form id="messageForm" class="message-form"><label for="messageBody">Your message<textarea id="messageBody" name="body" maxlength="2000" required placeholder="Write to your school team…"></textarea></label><p class="field-error" id="messageError" role="alert"></p><button class="primary" type="submit">Send message</button></form>` : ""}`;
-}
-async function calendarScreen(s) {
-  const result = await api(`/children/${s.id}/calendar?month=${month}`);
-  const start = parseDay(month),
-    year = start.getFullYear(),
-    m = start.getMonth(),
-    days = new Date(year, m + 1, 0).getDate();
-  const onDay = (date) => [
-    ...result.events.filter((e) => e.event_date === date),
-    ...result.holidays.filter((h) => h.starts_on <= date && h.ends_on >= date),
-  ];
-  if (!chosenDay.startsWith(month.slice(0, 7))) chosenDay = month;
-  return `<div class="calendar-layout"><section class="panel"><div class="calendar-top"><button data-month="-1" aria-label="Previous month">${icon("back")}</button><h2>${esc(start.toLocaleDateString(undefined, { month: "long", year: "numeric" }))}</h2><button data-month="1" aria-label="Next month">${icon("next")}</button></div><div class="calendar-grid">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => `<span class="weekday">${d}</span>`).join("")}${Array.from({ length: start.getDay() }, () => "<span></span>").join("")}${Array.from(
-    { length: days },
-    (_, i) => {
-      const date = isoDate(new Date(year, m, i + 1)),
-        events = onDay(date).length;
-      return `<button class="calendar-day ${chosenDay === date ? "selected" : ""} ${isoDate(new Date()) === date ? "today" : ""}" data-day="${date}" aria-label="${esc(formatDay(date, { day: "numeric", month: "long" }))}${events ? `, ${events} events` : ""}" aria-pressed="${chosenDay === date}">${i + 1}${events ? '<i aria-hidden="true"></i>' : ""}</button>`;
-    },
-  ).join(
-    "",
-  )}</div></section><section class="panel"><div class="panel-title"><h2>${esc(formatDay(chosenDay, { day: "numeric", month: "long" }))}</h2></div>${onDay(chosenDay).length ? eventRows(onDay(chosenDay)) : '<p class="support-note">No events scheduled for this day.</p>'}</section></div>`;
+  return `<div class="school-conversation">
+    ${s.is_active ? `<div class="message-topics" role="group" aria-label="Message topic">
+      ${Object.entries(messageTopics).map(([key, [label, emoji]]) => `<button type="button" data-message-topic="${key}" aria-pressed="${key === "teacher"}">${profileIcon(emoji)} ${label}</button>`).join("")}
+    </div>` : ""}
+    <details class="conversation-access"><summary>Who can read this conversation?</summary><p>Linked guardians and the assigned school team share this thread. For anything urgent, contact your school directly.</p></details>
+    ${pagination(result)}
+    <div class="thread">${result.messages.map((m) => `<article class="message ${m.is_own ? "own" : ""}">
+      ${m.is_own ? "" : `<span class="avatar" aria-hidden="true">${esc(initials(m.author_name))}</span>`}
+      <div class="message-copy"><p>${esc(m.body)}</p>
+        <div class="message-meta"><time datetime="${esc(m.created_at)}">${esc(stamp(m.created_at))}</time> · ${esc(m.is_own ? "You" : m.author_name)}</div>
+      </div>
+    </article>`).join("") || empty("messages", "Start a conversation.", "Ask about their day, share a little update, or let the school know what’s on your mind.")}</div>
+    ${s.is_active ? `<form id="messageForm" class="message-form" data-topic="teacher">
+      <div class="message-templates" role="group" aria-label="Quick message drafts">
+        ${Object.entries(messageTemplates).map(([key, [emoji, label]]) => `<button type="button" data-message-template="${key}">${profileIcon(emoji)} ${label}</button>`).join("")}
+      </div>
+      <div class="message-compose"><label for="messageBody" class="sr-only">Your message</label>
+        <textarea id="messageBody" name="body" maxlength="2000" required placeholder="${messageTopics.teacher[2]}" rows="2"></textarea>
+        <button class="primary" type="submit" aria-label="Send message">${profileIcon("➤")}</button>
+      </div>
+      <p class="field-error" id="messageError" role="alert"></p>
+    </form>` : ""}
+  </div>`;
 }
 function manageScreen() {
   const mayManage =
@@ -874,7 +910,7 @@ document.addEventListener("submit", async (event) => {
   }
   button.disabled = true;
   try {
-    await api(`/children/${student}/messages`, { body });
+    await api(`/children/${student}/messages`, { body: topicPrefix(event.target.dataset.topic) + body });
     if (version === epoch && student === selected && route() === "messages") {
       page = 1;
       await render();
@@ -890,6 +926,31 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("click", async (event) => {
   const el = event.target.closest("button,a");
   if (!el) return;
+  if (el.dataset.sampleAck && preview && route() === "updates") {
+    sampleAcknowledgments.add(el.dataset.sampleAck);
+    el.textContent = "✓ Acknowledged";
+    el.classList.add("acknowledged");
+    el.disabled = true;
+    return;
+  }
+  if (el.dataset.messageTopic || el.dataset.messageTemplate) {
+    const form = $("#messageForm");
+    if (!form) return;
+    if (el.dataset.messageTopic) setMessageTopic(form, el.dataset.messageTopic);
+    else {
+      const [, , topic, text] = messageTemplates[el.dataset.messageTemplate];
+      const input = form.elements.body;
+      if (input.value.trim() && !window.confirm("Replace your current draft with this quick message?")) return;
+      setMessageTopic(form, topic);
+      input.value = text(child().full_name);
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+    return;
+  }
+  if (el.dataset.homeActivity && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && child()?.is_active) {
+    messageDraft = { student: child().id, text: `Hello, we tried “${el.dataset.homeActivity}” at home. ` };
+  }
   if (el.dataset.todayDraft && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     const s = child();
     if (s?.is_active) {
@@ -918,16 +979,19 @@ document.addEventListener("click", async (event) => {
     page = Number(el.dataset.page);
     return render();
   }
-  if (el.matches("[data-month]")) {
-    const d = parseDay(month);
-    d.setMonth(d.getMonth() + Number(el.dataset.month));
-    month = isoDate(d);
-    chosenDay = month;
-    return render();
-  }
-  if (el.matches("[data-day]")) {
-    chosenDay = el.dataset.day;
-    return render();
+  if (el.matches("[data-school-calendar]")) {
+    event.preventDefault();
+    if (route() !== "calendar") return;
+    const { schoolCalendar: action, value } = el.dataset;
+    if (calendarView.handle(action, value)) {
+      const version = generation + 1;
+      await render();
+      if (route() === "calendar" && version === generation) {
+        const selector = `[data-school-calendar="${action}"]${value ? `[data-value="${CSS.escape(value)}"]` : ""}`;
+        (document.querySelector(selector) || document.querySelector('[data-school-calendar="filter"]'))?.focus({ preventScroll: true });
+      }
+    }
+    return;
   }
   if (el.matches("[data-withdraw]")) {
     if (!confirm("Withdraw this update? Families will no longer see it."))
@@ -973,6 +1037,7 @@ $("#editor").addEventListener("cancel", (event) => {
   if ($("#editorForm button[type=submit]").disabled) event.preventDefault();
 });
 $("#childSelect").addEventListener("change", (event) => {
+  calendarView.reset();
   messageDraft = null;
   selected = event.target.value;
   page = 1;
@@ -982,6 +1047,7 @@ window.addEventListener("hashchange", () => {
   if ($("#portal").hidden) return;
   page = 1;
   if (route() !== "messages") messageDraft = null;
+  if (route() !== "calendar") calendarView.reset();
   render();
   window.scrollTo(0, 0);
   $("#main").focus({ preventScroll: true });
@@ -1071,7 +1137,7 @@ async function start() {
   try {
     if (previewRequested) {
       $("#loginForm button[type=submit]").disabled = true;
-      const { createPreview } = await import("./parents-preview.js?v=4");
+      const { createPreview } = await import("./parents-preview.js?v=6");
       preview = createPreview();
       await enter();
       return;

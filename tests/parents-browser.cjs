@@ -110,7 +110,7 @@ watchdog.unref();
   await visible("Finger Painting: Spring Blossoms");
   await page.getByText("Currently: Nap & Quiet Rest").waitFor();
   await page.getByRole("link", { name: /View sample album/ }).click();
-  await visible("Our colour explorers");
+  await page.getByRole("heading", { name: "Our colour explorers", exact: true }).waitFor();
   await nav("Today");
   await page.getByText("Full menu plan").click();
   await visible("Lunch: Paneer khichdi with sweet papaya.");
@@ -142,12 +142,26 @@ watchdog.unref();
     });
   }
   await nav("Home learning");
-  await visible("A little counting adventure");
+  await page.getByRole("heading", { name: "A little counting adventure", exact: true }).waitFor();
+  await page.getByRole("heading", { name: /The Great Sock Matching Game/ }).waitFor();
+  const rhyme = page.locator(".learning-rhyme audio");
+  await rhyme.evaluate(audio => { audio.preload = "metadata"; audio.load(); });
+  await page.waitForFunction(() => document.querySelector(".learning-rhyme audio")?.duration > 0);
+  await page.locator(".learning-card.featured").getByRole("link", { name: "Share with the school", exact: true }).click();
+  assert.match(await page.getByLabel("Your message").inputValue(), /Sock Matching Game/);
+  await nav("School updates");
+  const acknowledge = page.getByRole("button", { name: "Acknowledge", exact: true });
+  await acknowledge.click();
+  assert.equal(await page.getByRole("button", { name: "✓ Acknowledged", exact: true }).isDisabled(), true);
+  await nav("Daily diary");
+  await page.getByRole("heading", { name: "Lunch & Nutrition Log", exact: true }).waitFor();
+  await visible("2 cups");
+  await nav("Home learning");
   await page.locator("#childSelect").selectOption({ label: "Vihaan Sharma" });
-  await visible("Bring a story to share");
+  await page.getByRole("heading", { name: "Bring a story to share", exact: true }).waitFor();
   assert.equal(
     await page
-      .getByText("A little counting adventure", { exact: true })
+      .getByRole("heading", { name: "A little counting adventure", exact: true })
       .count(),
     0,
   );
@@ -161,6 +175,10 @@ watchdog.unref();
   await page.getByRole("heading", { name: "Authorized Pickups", exact: true }).waitFor();
   await page.getByRole("heading", { name: /Gate Pickup Pass/ }).waitFor();
   await nav("Ask the school");
+  await page.getByRole("button", { name: "Medicine note", exact: true }).click();
+  assert.match(await page.getByLabel("Your message").inputValue(), /care note for Aarohi Sharma/);
+  assert.equal(await page.getByRole("button", { name: "Medicine / diet", exact: true }).getAttribute("aria-pressed"), "true");
+  await page.getByRole("button", { name: "Class teacher", exact: true }).click();
   await page
     .getByLabel("Your message")
     .fill('<img src=x onerror="window.__injected=1"> Hello from home');
@@ -168,9 +186,41 @@ watchdog.unref();
   await visible('<img src=x onerror="window.__injected=1"> Hello from home');
   assert.equal(await page.evaluate(() => window.__injected), undefined);
   await nav("Calendar");
+  await page.getByRole("heading", { name: "School Calendar", exact: true }).waitFor();
+  await visible("Parent prep checklist");
+  await page.getByRole("button", { name: "PTM Connect", exact: true }).click();
+  assert.equal(await page.locator(".calendar-agenda-card").count(), 1);
+  await visible("Parent–Teacher Connect");
+  await page.getByRole("button", { name: /^All \(/ }).click();
+  await page.getByRole("button", { name: "Holidays", exact: true }).click();
+  await visible("Winter Break · School Closed");
+  await page.getByRole("button", { name: /^All \(/ }).click();
+  await page.locator(".calendar-week-day[aria-current=date]").click();
+  await visible("Regular School Day · Routine Play");
+  assert.equal(await page.locator(".calendar-agenda-card").count(), 1);
+  await page.getByRole("button", { name: "Show all dates", exact: true }).click();
+  assert.equal(await page.locator(".calendar-agenda-card").count(), 5);
+  async function calendarDownload(name) {
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name, exact: true }).click();
+    const file = await download;
+    assert.match(file.suggestedFilename(), /^octominds-sample-(?:calendar|reminder)-.*\.ics$/);
+    const data = await fs.readFile(await file.path(), "utf8");
+    assert.ok(data.startsWith("BEGIN:VCALENDAR\r\n"));
+    assert.ok(data.split("\r\n").every(line => Buffer.byteLength(line) <= 75));
+    return data.replace(/\r\n /g, "");
+  }
+  const reminder = await calendarDownload("Add 1-day reminder");
+  assert.match(reminder, /BEGIN:VALARM\r\nTRIGGER:-P1D/);
+  assert.match(reminder, /SUMMARY:Sample: Yellow Sunshine Day/);
+  const monthExport = await calendarDownload("Export calendar");
+  assert.equal((monthExport.match(/BEGIN:VEVENT/g) || []).length, 5);
+  assert.doesNotMatch(monthExport, /BEGIN:VALARM/);
   await a11y();
   await page.getByRole("button", { name: "Next month" }).click();
   await page.getByRole("button", { name: "Previous month" }).click();
+  await page.getByRole("button", { name: "Next week", exact: true }).click();
+  await page.getByRole("button", { name: "Previous week", exact: true }).click();
   await page.locator("#previewRole").selectOption("staff");
   await nav("School desk");
   await visible("Children & family connections");
@@ -211,7 +261,7 @@ watchdog.unref();
   await page.locator("#previewRole").selectOption("parent");
   assert.equal(await page.locator("#childSelect option").count(), 3);
   await nav("School updates");
-  await visible("Our first family update");
+  await page.getByRole("heading", { name: "Our first family update", exact: true }).waitFor();
   await page.locator("#previewRole").selectOption("staff");
   await nav("School updates");
   await page
@@ -264,13 +314,16 @@ watchdog.unref();
       fullPage: true,
     });
   for (const name of [
+    "School updates",
     "Home learning",
     "Daily diary",
     "Calendar",
+    "Photo gallery",
     "Ask the school",
     "My child",
   ]) {
     await nav(name);
+    await page.locator("#content .loading").waitFor({ state: "hidden" });
     await noOverflow();
     await a11y();
   }
@@ -279,8 +332,19 @@ watchdog.unref();
       path: path.join(screenshotDir, "parents-my-child-mobile.png"),
       fullPage: true,
     });
-  await page.getByRole("link", { name: "Today", exact: true }).click();
+  await page.locator("#childBack").click();
   await page.getByRole("heading", { name: "Little Moments Captured", exact: true }).waitFor();
+  await page.locator("#previewRole").selectOption("staff");
+  await nav("School desk");
+  await visible("Children & family connections");
+  await noOverflow();
+  await a11y();
+  await page.getByRole("link", { name: "Manage albums", exact: true }).click();
+  await page.getByRole("heading", { name: "School albums", exact: true }).waitFor();
+  assert.equal(await page.locator("#childBack").getAttribute("href"), "/parents?preview=1#/manage");
+  await page.locator("#content .loading").waitFor({ state: "hidden" });
+  await noOverflow();
+  await a11y();
   console.log("PASS: mobile and accessibility");
   assert.deepEqual(
     apiRequests,

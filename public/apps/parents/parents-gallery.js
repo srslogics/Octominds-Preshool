@@ -38,10 +38,10 @@ export function createGallery({
     "beforeend",
     `
     <dialog id="photoViewer" class="photo-viewer" aria-labelledby="photoViewerTitle">
-      <div class="photo-viewer-heading"><div><p class="eyebrow">SCHOOL MEMORIES</p><h2 id="photoViewerTitle"></h2></div><button type="button" class="quiet" data-gallery-close="viewer" aria-label="Close photo viewer">×</button></div>
+      <div class="photo-viewer-heading"><h2 id="photoViewerTitle"></h2><button type="button" class="quiet" data-gallery-close="viewer" aria-label="Close photo viewer">×</button></div>
       <div id="photoStage" class="photo-stage" aria-live="polite"></div>
       <div class="photo-viewer-controls"><button type="button" data-gallery-step="-1" aria-label="Previous photo">${icon("back")}</button><span id="photoPosition"></span><button type="button" data-gallery-step="1" aria-label="Next photo">${icon("next")}</button></div>
-      <div class="photo-viewer-footer"><p id="photoCaption"></p><div><button type="button" id="savePhoto" data-gallery-download class="secondary">Save photo</button><button type="button" id="removePhoto" data-gallery-remove class="danger">Remove photo</button></div></div>
+      <div class="photo-viewer-footer"><p id="photoCaption"></p><div><button type="button" id="savePhoto" data-gallery-download class="secondary">Save photo</button><button type="button" id="shareViewedPhoto" class="secondary" data-gallery-share-file hidden>Share photo</button><button type="button" id="removePhoto" data-gallery-remove class="danger">Remove photo</button></div></div>
     </dialog>
     <dialog id="albumEditor" class="album-editor" aria-labelledby="albumEditorTitle"><form id="albumForm">
       <div class="dialog-heading"><h2 id="albumEditorTitle">Share a school memory</h2><button type="button" class="quiet" data-gallery-close="upload" aria-label="Close album editor">×</button></div>
@@ -90,28 +90,33 @@ export function createGallery({
     if (!current(c)) return "";
     staffView = !student;
     albums = result.albums;
-    let previous = "",
-      cards = "";
-    for (const album of albums) {
-      const ready = album.photos.filter((p) => p.status === "ready");
-      if (previous !== album.taken_on) {
-        if (previous) cards += "</div></section>";
-        previous = album.taken_on;
-        cards += `<section class="gallery-date"><h2>${esc(formatDay(album.taken_on, { day: "numeric", month: "long", year: "numeric" }))}</h2><div class="album-grid">`;
-      }
-      cards += `<article class="album-card"><div class="album-mosaic ${ready.length === 1 ? "single" : ""}">${
-        ready
-          .slice(0, 4)
-          .map(
-            (p, i) =>
-              `<button type="button" data-gallery-photo="${esc(p.id)}" data-gallery-album="${esc(album.id)}" aria-label="View ${esc(photoLabel(p))} in ${esc(album.title)}"><img data-gallery-thumb="${esc(p.id)}" alt="${esc(photoLabel(p))}" width="480" height="360"><span class="photo-loading">Loading photo…</span>${i === 3 && ready.length > 4 ? `<span class="photo-more">+${ready.length - 4}</span>` : ""}</button>`,
-          )
-          .join("") ||
-        '<div class="album-no-photos">Your draft is waiting for its first photo.</div>'
-      }</div><div class="album-card-body"><div class="album-meta"><span>${ready.length} ${ready.length === 1 ? "photo" : "photos"}</span>${album.status === "draft" ? '<span class="badge">Draft · school team only</span>' : ""}</div><h3>${esc(album.title)}</h3>${staffView ? `<p>${esc(album.class_name)} · ${esc(album.student_name || "Whole class")}</p>` : ""}${album.description ? `<p>${esc(album.description)}</p>` : ""}${album.can_manage ? `<div class="album-actions">${album.status === "draft" ? `<button type="button" class="secondary" data-gallery-resume="${esc(album.id)}">Review draft</button>` : ""}<button type="button" class="quiet danger" data-gallery-withdraw="${esc(album.id)}">${album.status === "draft" ? "Discard" : "Withdraw"} album</button></div>` : ""}</div></article>`;
-    }
-    if (previous) cards += "</div></section>";
-    return `<div class="toolbar"><span class="count">${result.total} ${result.total === 1 ? "album" : "albums"}${student ? ` shared with ${esc(student.full_name)}` : " you manage"}</span><span class="spacer"></span>${(!student || student.can_publish) && c.workspace.classes.length ? '<button type="button" class="primary" data-gallery-upload>Share photos</button>' : ""}<button type="button" class="secondary" data-refresh aria-label="Refresh gallery">Refresh</button></div><p class="gallery-note">A little window into their school day. Photos are shared privately with linked families.</p>${cards || `<div class="empty">${icon("gallery")}<h2>Little moments are on their way.</h2><p>When the school team shares photos, you’ll find them here, organized by date.</p></div>`}${result.total > result.page_size ? `<div class="pagination"><button data-page="${page - 1}" ${page === 1 ? "disabled" : ""} aria-label="Previous page">${icon("back")}</button><span>Page ${page} of ${Math.ceil(result.total / result.page_size)}</span><button data-page="${page + 1}" ${page * result.page_size >= result.total ? "disabled" : ""} aria-label="Next page">${icon("next")}</button></div>` : ""}`;
+    const cards = albums.map((album) => {
+      const ready = album.photos.filter((photo) => photo.status === "ready");
+      const topic = c.preview ? album.symbol : "";
+      return `<article class="album-card">
+        <div class="album-card-heading"><div>
+          <h2>${topic ? `<span aria-hidden="true">${esc(topic)}</span> ` : ""}${esc(album.title)}</h2>
+          <p><time datetime="${esc(album.taken_on)}">${esc(formatDay(album.taken_on))}</time> · ${ready.length} ${ready.length === 1 ? "photo" : "photos"}${album.class_name ? ` · ${esc(album.class_name)}` : ""}</p>
+        </div>${ready.length ? `<button type="button" class="album-open" data-gallery-view="${esc(album.id)}">View album <span aria-hidden="true">→</span></button>` : ""}</div>
+        <div class="album-mosaic">
+          ${ready.slice(0, 3).map((photo, index) => `<button type="button" data-gallery-photo="${esc(photo.id)}" data-gallery-album="${esc(album.id)}"
+            aria-label="View ${esc(photoLabel(photo))} in ${esc(album.title)}"><img data-gallery-thumb="${esc(photo.id)}" alt="${esc(photoLabel(photo))}" width="480" height="360">
+            <span class="photo-loading">Loading photo…</span>${index === 2 && ready.length > 3 ? `<span class="photo-more" aria-hidden="true">+${ready.length - 3}</span>` : ""}</button>`).join("")
+            || '<div class="album-no-photos">Your draft is waiting for its first photo.</div>'}
+        </div>
+        ${album.description ? `<p class="album-description">${esc(album.description)}</p>` : ""}
+        ${staffView && album.student_name ? `<p class="album-description">Shared with ${esc(album.student_name)}</p>` : ""}
+        ${album.status === "draft" || album.can_manage || ready.length ? `<div class="album-actions">
+          ${album.status === "draft" ? '<span class="badge album-draft">Draft · school team only</span>' : ""}
+          ${album.can_manage ? `${album.status === "draft" ? `<button type="button" class="secondary" data-gallery-resume="${esc(album.id)}">Review draft</button>` : ""}
+            <button type="button" class="quiet danger" data-gallery-withdraw="${esc(album.id)}">${album.status === "draft" ? "Discard" : "Withdraw"} album</button>`
+            : ready.length ? `<button type="button" class="album-share" data-gallery-view="${esc(album.id)}"><span aria-hidden="true">📲</span> Save or share a photo</button>` : ""}
+        </div>` : ""}
+      </article>`;
+    }).join("");
+    return `<div class="toolbar"><span class="count">${result.total} ${result.total === 1 ? "album" : "albums"}${student ? ` shared with ${esc(student.full_name)}` : " you manage"}</span><span class="spacer"></span>${(!student || student.can_publish) && c.workspace.classes.length ? '<button type="button" class="primary" data-gallery-upload>Share photos</button>' : ""}<button type="button" class="secondary" data-refresh aria-label="Refresh gallery">Refresh</button></div>
+      ${cards ? `<div class="album-grid">${cards}</div>` : `<div class="empty">${icon("gallery")}<h2>Little moments are on their way.</h2><p>When the school team shares photos, you’ll find them here.</p></div>`}
+      ${result.total > result.page_size ? `<div class="pagination"><button data-page="${page - 1}" ${page === 1 ? "disabled" : ""} aria-label="Previous page">${icon("back")}</button><span>Page ${page} of ${Math.ceil(result.total / result.page_size)}</span><button data-page="${page + 1}" ${page * result.page_size >= result.total ? "disabled" : ""} aria-label="Next page">${icon("next")}</button></div>` : ""}`;
   }
   async function image(photo, thumbnail = false) {
     const student = staffView ? null : context().student;
@@ -175,6 +180,8 @@ export function createGallery({
     const photo = view.photos[view.index];
     release(view.url);
     view.url = null;
+    view.file = null;
+    $("#shareViewedPhoto").hidden = true;
     $("#photoViewerTitle").textContent = album.title;
     $("#photoCaption").textContent = photo.caption || album.description;
     $("#photoPosition").textContent =
@@ -199,6 +206,11 @@ export function createGallery({
       $("#photoStage").innerHTML = `<img alt="${esc(photoLabel(photo))}">`;
       $("#photoStage img").src = view.url;
       $("#savePhoto").disabled = false;
+      const file = new File([blob], `octominds-${photo.id}.${view.extension}`, { type: blob.type });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        view.file = file;
+        $("#shareViewedPhoto").hidden = false;
+      }
     } catch (error) {
       if (view && request === viewerRequest && current(c))
         $("#photoStage").innerHTML =
@@ -425,8 +437,8 @@ export function createGallery({
     if (el.matches("[data-gallery-upload]")) return openUploader();
     if (el.matches("[data-gallery-resume]"))
       return openUploader(el.dataset.galleryResume);
-    if (el.matches("[data-gallery-photo]")) {
-      const album = albums.find((a) => a.id === el.dataset.galleryAlbum);
+    if (el.matches("[data-gallery-photo], [data-gallery-view]")) {
+      const album = albums.find((a) => a.id === (el.dataset.galleryAlbum || el.dataset.galleryView));
       if (!album) return;
       view = {
         album,
@@ -434,9 +446,8 @@ export function createGallery({
         index: 0,
         url: null,
       };
-      return showPhoto(
-        view.photos.findIndex((p) => p.id === el.dataset.galleryPhoto),
-      );
+      if (!view.photos.length) return;
+      return showPhoto(el.dataset.galleryPhoto ? view.photos.findIndex((p) => p.id === el.dataset.galleryPhoto) : 0);
     }
     if (el.matches("[data-gallery-step]") && view)
       return showPhoto(view.index + Number(el.dataset.galleryStep));
@@ -461,6 +472,11 @@ export function createGallery({
       document.body.append(a);
       a.click();
       a.remove();
+      return;
+    }
+    if (el.matches("[data-gallery-share-file]") && view?.file) {
+      try { await navigator.share({ files: [view.file] }); }
+      catch (error) { if (error.name !== "AbortError") toast("Sharing is unavailable. You can still save this photo."); }
       return;
     }
     if (el.matches("[data-gallery-withdraw]"))

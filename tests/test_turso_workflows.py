@@ -281,6 +281,29 @@ class TursoWorkflows(unittest.TestCase):
         self.assertEqual(self.request('GET','/school/workspace',self.teacher).json()['centers'][0]['id'],self.center)
         self.request('POST','/school/records/programs',self.teacher,{'data':{'branch_id':self.other_center,'name':'Other'}},code=403)
 
+    def test_family_calendar_can_include_the_next_month(self):
+        event = self.request('POST', '/parents/posts', self.teacher, {
+            'class_id': self.classroom, 'student_id': self.child, 'kind': 'event',
+            'title': 'Family Day', 'body': 'Bring a favourite book.', 'event_date': '2026-12-12',
+        }, code=201).json()
+        holiday = self.school('holidays', {'branch_id': self.center, 'name': 'Winter break',
+                                           'starts_on': '2026-12-24', 'ends_on': '2027-01-03'})
+        path = f'/parents/children/{self.child}/calendar?month=2026-11-01'
+        self.assertEqual(self.request('GET', path, self.parent).json(), {'events': [], 'holidays': []})
+        expanded = self.request('GET', path + '&include_next_month=true', self.parent).json()
+        self.assertEqual([item['id'] for item in expanded['events']], [event['id']])
+        self.assertEqual([item['id'] for item in expanded['holidays']], [holiday['id']])
+        self.request('GET', path + '&include_next_month=true', self.unlinked, code=403)
+        self.request('POST', '/parents/posts', self.teacher, {
+            'class_id': self.classroom, 'student_id': self.child, 'kind': 'diary',
+            'title': 'A diary entry', 'body': 'Notes from today.',
+        }, code=201)
+        feed_path = f'/parents/children/{self.child}/posts'
+        result = self.request('GET', feed_path + '?kind=circulars', self.parent).json()
+        self.assertEqual(result['total'], 1)
+        self.assertEqual([item['id'] for item in result['posts']], [event['id']])
+        self.assertEqual(self.request('GET', feed_path, self.parent).json()['total'], 2)
+
     def test_workspace_starts_with_verified_account_and_scoped_view_data(self):
         school = '/school/workspace?include_account=true&include_directory=true'
         owner = self.request('GET', school, self.owner).json()

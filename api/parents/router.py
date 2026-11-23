@@ -73,7 +73,7 @@ def workspace(user: User, repo: Repo, include_account: bool = False, today_month
 
 @router.get('/children/{student_id}/posts')
 def posts(student_id: UUID, user: User, repo: Repo,
-          kind: Literal['all', 'notice', 'homework', 'diary', 'event'] = 'all',
+          kind: Literal['all', 'circulars', 'notice', 'homework', 'diary', 'event'] = 'all',
           page: int = Query(1, ge=1, le=10000)):
     return repo.request('POST', '/rpc/parents_feed', data={
         'p_student': str(student_id), 'p_kind': kind, 'p_page': page})
@@ -85,9 +85,9 @@ def child_profile(student_id: UUID, user: User, repo: Repo):
 
 
 @router.get('/children/{student_id}/calendar')
-def calendar(student_id: UUID, month: date, user: User, repo: Repo):
+def calendar(student_id: UUID, month: date, user: User, repo: Repo, include_next_month: bool = False):
     return repo.request('POST', '/rpc/parents_calendar', data={
-        'p_student': str(student_id), 'p_month': month.isoformat()})
+        'p_student': str(student_id), 'p_month': month.isoformat(), 'p_include_next_month': include_next_month})
 
 
 @router.get('/children/{student_id}/messages')

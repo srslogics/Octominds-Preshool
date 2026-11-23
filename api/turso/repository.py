@@ -13,6 +13,7 @@ COMMANDS = {
     'school_access_command': school.access_command,
     'school_accept_invitation': school.accept_invitation,
     'parents_workspace': families.workspace,
+    'parents_child_profile': families.child_profile,
     'parents_feed': families.feed,
     'parents_calendar': families.calendar,
     'parents_thread': families.thread,
@@ -27,7 +28,8 @@ COMMANDS = {
     'parents_create_album': photos.create_album,
     'parents_album_command': photos.command,
 }
-READS = {'school_workspace', 'school_access_directory', 'parents_workspace', 'parents_feed', 'parents_calendar', 'parents_thread',
+READS = {'school_workspace', 'school_access_directory', 'parents_workspace', 'parents_child_profile',
+         'parents_feed', 'parents_calendar', 'parents_thread',
          'parents_gallery', 'parents_staff_albums', 'parents_album_detail'}
 
 

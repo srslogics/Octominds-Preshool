@@ -6,6 +6,11 @@ const day = (offset) => {
   d.setDate(d.getDate() + offset);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+const timeToday = (hour, minute) => {
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  return date.toISOString();
+};
 export function createPreview() {
   let role = "parent";
   const branch = id(1),
@@ -25,6 +30,56 @@ export function createPreview() {
       relationship: "Mother",
       is_active: true,
       version: 1,
+      today: {
+        group: "Tiny Explorers",
+        arrival: "Arrived at 8:45 AM · Happy and playful 😊",
+        current: {
+          title: "Currently: Nap & Quiet Rest",
+          note: "Asleep peacefully since 1:15 PM with a blue blanket.",
+          remaining: "45 min left",
+        },
+        pickup: "1:30 PM · Sample pass",
+        updated: "Updated 1:20 PM",
+        routines: [
+          ["🥪", "Lunch (12:15)", "Ate it all", "Paneer khichdi and sweet papaya", "mint"],
+          ["😴", "Rest time", "Sleeping", "1:15 PM · Settled in their cot", "plum"],
+          ["💧", "Water & potty", "2 bottles", "2 potty breaks · Drank water regularly", "blue"],
+        ],
+        menu: {
+          snack: "Snack: Watermelon cubes",
+          evening: "Evening: Warm milk and an oat cookie",
+          lunch: "Lunch: Paneer khichdi with sweet papaya.",
+        },
+      },
+      profile: {
+        avatar: "👧🏽",
+        nickname: "Aaru",
+        class_label: "Tiny Explorers (Nursery A)",
+        cubby: "Cubby #12",
+        check_in: "Checked in · 8:45 AM",
+        age: "3 years, 4 months",
+        pickup_code: "#8492",
+        team: [
+          { full_name: "Meera Kapoor", role: "Lead Teacher", avatar: "👩🏽‍🏫",
+            description: "Early learning, classroom activities and family updates." },
+          { full_name: "Sunita Didi", role: "Class Caregiver", avatar: "👩🏽",
+            description: "Meals, rest time and daily care routines." },
+        ],
+        care: [
+          ["Allergies", "✓", "No known allergies"],
+          ["Diet plan", "🥦", "Lacto-vegetarian"],
+          ["Blood group", "🩸", "B positive (B+)"],
+          ["Nap routine", "😴", "1:00 PM · 45 minutes"],
+        ],
+        pickups: [
+          { full_name: "Ananya Sharma", relationship: "Mother · Primary account" },
+          { full_name: "Arjun Sharma", relationship: "Father" },
+        ],
+        milestones: [
+          ["🎨", "Little Picasso"], ["🧩", "Puzzle Pro"],
+          ["🤝", "Kind Sharer"], ["👟", "Shoes Star"],
+        ],
+      },
     },
     {
       id: id(11),
@@ -37,6 +92,18 @@ export function createPreview() {
       relationship: "Mother",
       is_active: true,
       version: 1,
+      profile: {
+        avatar: "🧒🏽",
+        nickname: "Vian",
+        class_label: "Story Builders (Kindergarten B)",
+        cubby: "Cubby #07",
+        check_in: "Checked in · 8:55 AM",
+        age: "5 years, 2 months",
+        team: [
+          { full_name: "Meera Kapoor", role: "Class teacher", avatar: "👩🏽‍🏫" },
+        ],
+        milestones: [["📚", "Story Starter"], ["🌱", "Garden Helper"]],
+      },
     },
   ];
   const classes = [
@@ -62,11 +129,12 @@ export function createPreview() {
       id: id(20),
       class_id: classA,
       kind: "diary",
-      title: "Little hands, big discoveries",
-      body: "Today we explored colours with leaf printing. Aarohi loved mixing yellow and blue, and was so proud to discover a new shade of green.\n\nAt home, try spotting three green things together on your evening walk.",
+      title: "Finger Painting: Spring Blossoms",
+      body: "Aarohi was so focused and shared the paint pots kindly!",
       author_name: "Meera · Class teacher",
-      created_at: new Date().toISOString(),
+      created_at: timeToday(10, 45),
       created_by: staff,
+      today_feature: { symbol: "🎨", category: "Sensory art", quote: "Look, teacher! I mixed yellow and blue to make green leaves!" },
     },
     {
       id: id(21),
@@ -92,12 +160,23 @@ export function createPreview() {
       id: id(23),
       class_id: classA,
       kind: "event",
-      title: "Family story morning",
-      body: "Stories, smiles, and time together. Families are welcome from 10:00 am at the school.",
+      title: "Yellow Sunshine Day & Fruit Party 🍌",
+      body: "Wear yellow and bring a favourite fruit to share.",
       event_date: day(3),
       author_name: "The Green Park team",
       created_at: new Date().toISOString(),
       created_by: staff,
+    },
+    {
+      id: id(26),
+      class_id: classA,
+      kind: "diary",
+      title: "Garden Obstacle Course & Sandbox",
+      body: "Ran across the balancing bridge twice and built a sand pyramid with friends.",
+      author_name: "Meera · Class teacher",
+      created_at: timeToday(9, 30),
+      created_by: staff,
+      today_feature: { symbol: "🏃", category: "Outdoors" },
     },
     {
       id: id(24),

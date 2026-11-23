@@ -289,6 +289,10 @@ class TursoWorkflows(unittest.TestCase):
         teacher = self.request('GET', school, self.teacher).json()
         self.assertEqual(teacher['account']['role'], 'teacher')
         self.assertNotIn('directory', teacher)
+        profile = f'/parents/children/{self.child}/profile'
+        self.assertEqual(self.request('GET', profile, self.parent).json()['team'],
+                         [{'full_name': 'teacher', 'role': 'Class teacher'}])
+        self.request('GET', profile, self.unlinked, code=403)
 
         self.request('POST', '/parents/posts', self.teacher, {
             'class_id': self.classroom, 'student_id': self.child, 'kind': 'diary',

@@ -106,7 +106,27 @@ watchdog.unref();
   await page.getByRole("link", { name: /guest preview/i }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   console.log("PASS: mobile sign-in layout, password visibility, and guest preview link");
-  await visible("The latest little moments");
+  await page.getByRole("heading", { name: "Little Moments Captured", exact: true }).waitFor();
+  await visible("Finger Painting: Spring Blossoms");
+  await page.getByText("Currently: Nap & Quiet Rest").waitFor();
+  await page.getByRole("link", { name: /View sample album/ }).click();
+  await visible("Our colour explorers");
+  await nav("Today");
+  await page.getByText("Full menu plan").click();
+  await visible("Lunch: Paneer khichdi with sweet papaya.");
+  await page.getByRole("link", { name: "Running late", exact: true }).click();
+  const late = page.getByLabel("Your message");
+  await late.waitFor();
+  assert.match(await late.inputValue(), /Aarohi Sharma will be arriving late today/);
+  assert.equal(await page.locator(".thread").getByText(/will be arriving late today/).count(), 0);
+  await nav("Today");
+  await page.getByLabel("Switch child").selectOption({ label: "Vihaan Sharma" });
+  await page.getByRole("link", { name: "Report absent", exact: true }).click();
+  const absent = page.getByLabel("Your message");
+  await absent.waitFor();
+  assert.match(await absent.inputValue(), /Vihaan Sharma will be absent today/);
+  await nav("Today");
+  await page.getByLabel("Switch child").selectOption({ label: "Aarohi Sharma" });
   assert.equal(await page.locator("#childSelect option").count(), 2);
   assert.equal(
     await page.getByRole("navigation").getByText("School desk").count(),
@@ -134,8 +154,12 @@ watchdog.unref();
   await nav("Daily diary");
   await visible("Nothing shared here yet.");
   await nav("My child");
-  await visible("Kindergarten B · 2026–27");
-  await page.locator("#childSelect").selectOption({ label: "Aarohi Sharma" });
+  await page.locator(".child-class").getByText("Story Builders (Kindergarten B)").waitFor();
+  await page.getByLabel("Switch child").selectOption({ label: "Aarohi Sharma" });
+  await page.getByText("No known allergies").waitFor();
+  await visible("Little Picasso");
+  await page.getByRole("heading", { name: "Authorized Pickups", exact: true }).waitFor();
+  await page.getByRole("heading", { name: /Gate Pickup Pass/ }).waitFor();
   await nav("Ask the school");
   await page
     .getByLabel("Your message")
@@ -224,10 +248,10 @@ watchdog.unref();
   assert.equal(await page.locator("#childSelect option").count(), 2);
   console.log("PASS: publication and access revocation");
   await page.goto(origin + "/parents?preview=1#/today");
-  await visible("The latest little moments");
+  await page.getByRole("heading", { name: "Little Moments Captured", exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await nav("Today");
-  await visible("The latest little moments");
+  await page.getByRole("heading", { name: "Little Moments Captured", exact: true }).waitFor();
   const mobileNav = page.getByRole("navigation", { name: "Main navigation" });
   assert.equal(await mobileNav.getByRole("link").count(), 8);
   assert.ok(await mobileNav.evaluate((nav) => nav.scrollWidth <= nav.clientWidth));
@@ -250,6 +274,13 @@ watchdog.unref();
     await noOverflow();
     await a11y();
   }
+  if (screenshotDir)
+    await page.screenshot({
+      path: path.join(screenshotDir, "parents-my-child-mobile.png"),
+      fullPage: true,
+    });
+  await page.getByRole("link", { name: "Today", exact: true }).click();
+  await page.getByRole("heading", { name: "Little Moments Captured", exact: true }).waitFor();
   console.log("PASS: mobile and accessibility");
   assert.deepEqual(
     apiRequests,
@@ -323,6 +354,11 @@ watchdog.unref();
         json: { detail: "School is temporarily unavailable" },
       });
     const child = u.pathname.includes(A) ? "A" : "B";
+    if (u.pathname.endsWith("/calendar")) return r.fulfill({ json: { events: [], holidays: [] } });
+    if (u.pathname.endsWith("/profile"))
+      return r.fulfill({
+        json: { team: [{ full_name: "Teacher " + child, role: "Class teacher" }], office_phone: "+91 1234567890" },
+      });
     if (hold && child === "A")
       await new Promise((resolve) => setTimeout(resolve, 400));
     return r.fulfill({
@@ -364,6 +400,18 @@ watchdog.unref();
     await p.getByRole("heading", { name: "Only child A", exact: true }).count(),
     0,
   );
+  await p.getByRole("navigation").getByRole("link", { name: "My child", exact: true }).click();
+  await p.getByRole("heading", { name: "Teacher B", exact: true }).waitFor();
+  assert.equal(await p.getByText("No known allergies").count(), 0);
+  assert.equal(await p.getByText("Gate Pickup Pass").count(), 0);
+  assert.equal(await p.getByRole("link", { name: "Call school", exact: true }).getAttribute("href"), "tel:+911234567890");
+  await a11y(p);
+  await p.locator("#childBack").click();
+  await p.getByRole("heading", { name: "Only child B", exact: true }).waitFor();
+  assert.equal(await p.getByText("Sample menu", { exact: true }).count(), 0);
+  assert.equal(await p.getByText("Nap & Quiet Rest").count(), 0);
+  assert.equal(await p.getByRole("link", { name: "Gate pass", exact: true }).count(), 0);
+  await a11y(p);
   await p.getByRole("button", { name: "Sign out", exact: true }).click();
   await p.locator("#loginForm").waitFor();
   assert.equal(await p.locator("#content").textContent(), "");

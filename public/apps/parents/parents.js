@@ -37,7 +37,7 @@ const labels = {
 };
 const pages = {
   today: [
-    "Today at school",
+    "Today at School",
     "Catch up on class updates and what’s coming up next.",
   ],
   updates: [
@@ -61,7 +61,7 @@ const pages = {
     "Send a message to your child’s school team.",
   ],
   child: [
-    "My child",
+    "My Child",
     "Class details and family access.",
   ],
   gallery: [
@@ -87,6 +87,7 @@ let session = null,
   month = firstDay(),
   chosenDay = isoDate(new Date()),
   editing = null,
+  messageDraft = null,
   refreshing = null,
   toastTimer;
 const route = () => {
@@ -94,6 +95,7 @@ const route = () => {
   return Object.hasOwn(pages, r) ? r : "today";
 };
 const child = () => workspace?.students.find((s) => s.id === selected);
+const firstName = (name) => (name || "").trim().split(/\s+/)[0];
 const initials = (name) =>
   String(name || "")
     .split(/\s+/)
@@ -145,6 +147,7 @@ function clearSession() {
   refreshing = null;
   user = null;
   workspace = null;
+  messageDraft = null;
   selected = "";
   $("#portal").hidden = true;
   $("#auth").hidden = false;
@@ -367,10 +370,27 @@ async function render(initialToday) {
     version = ++generation,
     s = child();
   navigation();
+  const isProfile = r === "child";
+  const isToday = r === "today" && Boolean(s);
+  $("#portal").classList.toggle("view-child", isProfile);
+  $("#portal").classList.toggle("view-today", isToday);
+  $("#childBack").hidden = !isProfile;
+  $("#childBack").href = go("today");
+  $("#childBrand").hidden = !isProfile && !isToday;
+  $("#todayGreeting").hidden = !isToday;
+  $("#todayChildChoice").hidden = !isToday;
+  if (isToday) {
+    $("#todayGreeting").textContent = `Hello, ${firstName(user.full_name) || "there"}! 👋`;
+    $("#todayChildInitials").textContent = initials(s.full_name);
+    $("#todayChildName").textContent = firstName(s.full_name);
+    $("#todayChildArrow").hidden = workspace.students.length < 2;
+  }
+  $("#childSelect").hidden = isToday && workspace.students.length < 2;
+  $("#childPickerLabel").textContent = isProfile || isToday ? "Switch child" : "Viewing for";
   $("#childPicker").hidden =
-    ["manage", "school-albums"].includes(r) || !workspace.students.length;
+    ["manage", "school-albums"].includes(r) || workspace.students.length < (isProfile ? 2 : 1);
   $("#pageTitle").textContent = pages[r][0];
-  $("#pageDescription").textContent = pages[r][1];
+  $("#pageDescription").textContent = isProfile || isToday ? "" : pages[r][1];
   $("#content").innerHTML = loading();
   try {
     let html = "";
@@ -395,7 +415,8 @@ async function render(initialToday) {
         `<button data-refresh type="button" class="secondary">Check again</button>`,
       );
     } else if (r === "child") {
-      html = profileScreen(s);
+      const profile = preview ? s.profile : await api(`/children/${s.id}/profile`);
+      html = profileScreen(s, profile);
     } else if (r === "gallery") {
       html = await gallery.screen(s, page);
     } else if (r === "messages") {
@@ -410,46 +431,7 @@ async function render(initialToday) {
             api(`/children/${s.id}/posts`),
             api(`/children/${s.id}/calendar?month=${todayMonth}`),
           ]);
-      const upcoming = [
-        ...calendar.events,
-        ...calendar.holidays.map((h) => ({ ...h, event_date: h.starts_on })),
-      ]
-        .filter((e) => e.event_date >= isoDate(new Date()))
-        .sort((a, b) => a.event_date.localeCompare(b.event_date))
-        .slice(0, 3);
-      html = `
-        <section class="welcome-card">
-          <div class="welcome-copy">
-            <span class="child-badge">${esc(s.class_name)} · ${esc(s.center_name)}</span>
-            <h2>See ${esc(s.full_name.split(" ")[0])}’s day</h2>
-            <a class="button primary" href="${go("diary")}">Open daily diary</a>
-          </div>
-          <div class="welcome-art" aria-hidden="true">
-            <span class="welcome-sparkle welcome-sparkle-left">✦</span>
-            <div class="welcome-mascot"><img src="/assets/octominds-logo-horizontal.png" alt="" width="1437" height="540" /></div>
-            <span class="welcome-sparkle welcome-sparkle-right">✧</span>
-          </div>
-        </section>
-        <div class="dashboard-grid">
-          <section>
-            <div class="panel-title"><h2>The latest little moments</h2><a href="${go("updates")}">View updates</a></div>
-            ${feed.posts.slice(0, 3).map(postCard).join("") || empty("updates", "No updates yet", "Updates will appear here when the school shares them.")}
-          </section>
-          <div>
-            <section class="panel upcoming-panel">
-              <div class="panel-title"><h2>Coming up this month</h2><a href="${go("calendar")}">Calendar</a></div>
-              ${upcoming.length ? eventRows(upcoming) : '<p class="support-note">No upcoming events this month.</p>'}
-            </section>
-            <section class="panel">
-              <div class="panel-title"><h2>Quick links</h2></div>
-              <div class="quick-links">
-                <a href="${go("homework")}">${icon("homework")}Home learning</a>
-                <a href="${go("messages")}">${icon("messages")}Ask the school</a>
-                <a href="${go("child")}">${icon("child")}Your child’s details</a>
-              </div>
-            </section>
-          </div>
-        </div>`;
+      html = todayScreen(s, feed, calendar);
     } else {
       const kind = r === "updates" ? "all" : r;
       const feed = await api(
@@ -459,22 +441,204 @@ async function render(initialToday) {
     }
     if (version !== generation || !user) return;
     $("#content").innerHTML = html;
+    if (r === "messages" && messageDraft?.student === s?.id) {
+      const input = $("#messageBody");
+      if (input) {
+        input.value = messageDraft.text;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      messageDraft = null;
+    }
     if (r === "gallery" || r === "school-albums") gallery.mount();
   } catch (error) {
     if (version === generation && user) showError(error);
   }
 }
-function profileScreen(s) {
-  return `<div class="profile-hero"><span class="avatar" aria-hidden="true">${esc(initials(s.full_name))}</span><div><h2>${esc(s.full_name)}</h2><p>${esc(s.class_name)} · ${esc(s.year_name)}</p></div></div><div class="profile-grid"><section class="panel"><h2>Enrollment</h2><dl class="facts">${[
-    ["School center", s.center_name],
-    ["Class", s.class_name],
-    ["Academic year", s.year_name],
-    ["Status", s.is_active ? "Active" : "Inactive"],
-  ]
-    .map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`)
-    .join(
-      "",
-    )}</dl></section><section class="panel"><h2>Family access</h2><dl class="facts"><div><dt>Your account</dt><dd>${esc(user.full_name)}</dd></div>${s.relationship ? `<div><dt>Relationship</dt><dd>${esc(s.relationship)}</dd></div>` : ""}</dl><p class="support-note">Contact the school to update your child’s details or family access.</p><a class="button secondary" href="${go("messages")}">Contact the school</a></section></div>`;
+const profileIcon = (emoji) => `<span aria-hidden="true">${emoji}</span>`;
+
+function todayMoment(post) {
+  const feature = preview ? post.today_feature : null;
+  const symbol = feature?.symbol || { diary: "🎨", homework: "📚", notice: "📬", event: "🗓️" }[post.kind] || "✨";
+  return `<article class="today-card today-moment">
+    <div class="today-moment-heading">
+      <span class="today-moment-icon">${profileIcon(symbol)}</span>
+      <div><h3>${esc(post.title)}</h3>
+        <p><time datetime="${esc(post.created_at)}">${esc(stamp(post.created_at))}</time> · ${esc(post.author_name)}</p>
+      </div>
+      <span class="today-pill">${esc(feature?.category || labels[post.kind] || "School update")}</span>
+    </div>
+    ${feature?.quote ? `<a href="${go("gallery")}" class="today-art">
+      <span aria-hidden="true">🎨 🖐️ 🌈</span>
+      <strong>“${esc(feature.quote)}”</strong>
+      <span class="today-pill">View sample album →</span>
+    </a>` : ""}
+    <p class="today-moment-note">${feature?.quote ? "<strong>Teacher note:</strong> " : ""}${esc(post.body)}</p>
+    ${post.event_date ? `<p class="support-note">${esc(formatDay(post.event_date, { weekday: "long", day: "numeric", month: "long" }))}</p>` : ""}
+    ${post.can_withdraw ? `<button type="button" class="quiet danger" data-withdraw="${esc(post.id)}">Withdraw</button>` : ""}
+  </article>`;
+}
+
+function todayScreen(student, feed, calendar) {
+  const sample = preview ? student.today : null;
+  const today = isoDate(new Date());
+  const recent = feed.posts.find((post) => post.kind === "diary" && isoDate(new Date(post.created_at)) === today);
+  const upcoming = [...calendar.events, ...calendar.holidays.map((holiday) => ({ ...holiday, event_date: holiday.starts_on }))]
+    .filter((event) => (event.ends_on || event.event_date) >= today)
+    .sort((a, b) => a.event_date.localeCompare(b.event_date))[0];
+  const features = sample ? feed.posts.filter((post) => post.today_feature) : [];
+  const moments = (features.length ? features : feed.posts).slice(0, 3);
+  const heroTitle = sample ? `${firstName(student.full_name)}’s day is in full swing!` : `${firstName(student.full_name)}’s day at school`;
+  const quickActions = [
+    ["messages", "🚗", "Running late", "late"],
+    ["messages", "🤒", "Report absent", "absent"],
+    ["messages", "💬", "Message teacher"],
+    ["child", "🛡️", sample?.pickup ? "Gate pass" : "My child"],
+  ];
+  const draftLink = student.is_active ? `<a href="${go("messages")}">Ask the school about meals →</a>` : "";
+  return `<div class="today-dashboard">
+    <section class="today-hero" aria-labelledby="today-overview">
+      <div class="today-hero-intro">
+        <div><span class="today-location">${profileIcon("📍")} ${esc(sample?.group || student.class_name)} · ${esc(student.center_name)}</span>
+          <h2 id="today-overview">${esc(heroTitle)}</h2>
+          <p>${esc(sample?.arrival || (recent ? "There’s a new note in the Daily Diary today." : "See notes and moments shared by your school team."))}</p>
+        </div>
+        <div class="today-hero-art" aria-hidden="true">
+          <span class="today-sun">☀</span>
+          <div class="today-mascot"><img src="/assets/octominds-logo-horizontal.png" alt="" width="1437" height="540"></div>
+        </div>
+      </div>
+      ${sample?.current ? `<div class="today-current">
+        <span class="today-current-icon">${profileIcon("😴")}</span>
+        <div><h3>${esc(sample.current.title)}</h3><p>${esc(sample.current.note)}</p></div>
+        <span class="today-pill plum">${esc(sample.current.remaining)}</span>
+      </div>` : ""}
+      <div class="today-hero-footer">
+        ${sample?.pickup ? `<a class="today-pickup" href="${go("child")}">${profileIcon("🛡️")} Gate pickup <strong>${esc(sample.pickup)}</strong></a>` : ""}
+        <a class="button primary" href="${go("diary")}">${profileIcon("📖")} Open full daily diary <span aria-hidden="true">→</span></a>
+      </div>
+    </section>
+    <section aria-labelledby="today-care">
+      <div class="today-section-heading"><h2 id="today-care">${profileIcon("🥣")} Today’s Care &amp; Routine Log</h2>
+        ${sample?.updated ? `<span class="today-pill mint">${esc(sample.updated)}</span>` : ""}
+      </div>
+      ${sample?.routines ? `<div class="today-routine-grid">${sample.routines.map(([symbol, title, status, description, tone]) =>
+        `<article class="today-card today-routine"><div><span>${profileIcon(symbol)}</span><span class="today-pill ${esc(tone)}">${esc(status)}</span></div>
+          <h3>${esc(title)}</h3><p>${esc(description)}</p></article>`).join("")}</div>` :
+        `<div class="today-card today-routine-note"><h3>${esc(recent?.title || "Daily care notes")}</h3><p>${esc(recent?.body || "Care and routine updates appear in the Daily Diary when your school shares them.")}</p></div>`}
+    </section>
+    <section aria-labelledby="today-moments">
+      <div class="today-section-heading"><h2 id="today-moments">${profileIcon("🎨")} Little Moments Captured</h2><a href="${go("updates")}">View all updates →</a></div>
+      <div class="today-moments">${moments.map(todayMoment).join("") || '<div class="today-card today-routine-note"><p>School updates will appear here when they’re shared.</p></div>'}</div>
+    </section>
+    <div class="today-plans">
+      <section class="today-card today-plan">
+        <div class="today-section-heading"><h2>${profileIcon("🗓️")} Coming Up</h2>
+          ${upcoming ? `<span class="today-pill">${esc(formatDay(upcoming.event_date))}</span>` : ""}
+        </div>
+        ${upcoming ? `<h3>${esc(upcoming.title || upcoming.name)}</h3><p>${esc(upcoming.body || "School holiday")}</p>` : '<p>No upcoming events this month.</p>'}
+        <a href="${go("calendar")}">View calendar →</a>
+      </section>
+      <section class="today-card today-plan today-menu">
+        <div class="today-section-heading"><h2>${profileIcon("🥗")} Kitchen Menu</h2>
+          ${sample?.menu ? '<span class="today-pill mint">Sample menu</span>' : ""}
+        </div>
+        ${sample?.menu ? `<h3>Fresh from the school kitchen</h3><p>${esc(sample.menu.snack)}<br>${esc(sample.menu.evening)}</p>
+          <details><summary>Full menu plan</summary><p>${esc(sample.menu.lunch)}</p></details>` :
+          `<p>Contact your school for this week’s meal plan.</p>${draftLink}`}
+      </section>
+    </div>
+    <nav class="today-card today-actions" aria-label="Quick actions">
+      ${quickActions.filter(([route]) => student.is_active || route !== "messages")
+        .map(([route, emoji, label, draft]) => `<a href="${go(route)}"${draft ? ` data-today-draft="${draft}"` : ""}>
+          <span class="today-action-icon">${profileIcon(emoji)}</span><strong>${label}</strong></a>`).join("")}
+    </nav>
+  </div>`;
+}
+
+const profileLink = (route, label, style = "") =>
+  `<a class="profile-button ${style}" href="${go(route)}">${label}</a>`;
+
+function profileScreen(s, profile = {}) {
+  const { team = [], office_phone: phone } = profile;
+  const sample = preview ? profile : {};
+  const family = sample.pickups || [{
+    full_name: user.full_name,
+    relationship: s.relationship || "Your account",
+  }];
+  const status = sample.check_in || (s.is_active ? "Enrollment active" : "Enrollment inactive");
+  const officeNumber = phone?.replace(/[\s().-]/g, "");
+  const contact = /^\+?[0-9]{6,15}$/.test(officeNumber || "")
+    ? `tel:${officeNumber}` : go("messages");
+  const officeTitle = s.center_name ? `Contact ${esc(s.center_name)} Center Office` : "Contact the school office";
+  const familyTitle = sample.pickups ? "Authorized Pickups" : "Family Access";
+  return `<div class="child-profile">
+    <section class="child-card child-hero" aria-labelledby="child-name">
+      <div class="child-identity">
+        <div class="child-portrait" aria-hidden="true">
+          <span>${sample.avatar || esc(initials(s.full_name))}</span>
+          <img src="/assets/octominds-icon-192.png" width="28" height="28" alt="">
+        </div>
+        <div class="child-identity-details">
+          <div class="child-name-line"><h2 id="child-name">${esc(s.full_name)}</h2>
+            ${sample.nickname ? `<span class="child-nickname">“${esc(sample.nickname)}” ${profileIcon("⭐")}</span>` : ""}
+          </div>
+          <p class="child-class">${profileIcon("🚀")} ${esc(sample.class_label || s.class_name)}</p>
+          <div class="child-tags">
+            <span>${profileIcon("📍")} ${esc(s.center_name)}</span>
+            ${sample.cubby ? `<span class="child-cubby">${profileIcon("🐬")} ${esc(sample.cubby)}</span>` : ""}
+          </div>
+        </div>
+      </div>
+      <div class="child-summary">
+        <span class="child-status ${s.is_active ? "" : "inactive"}"><i></i>${esc(status)}</span>
+        <span>${profileIcon(sample.age ? "🎂" : "📅")} ${esc(sample.age || s.year_name)}</span>
+      </div>
+    </section>
+    <section class="child-card child-green" aria-labelledby="child-office">
+      <span class="child-green-icon">${profileIcon(sample.pickup_code ? "🛡️" : "💬")}</span>
+      <div>
+        <h2 id="child-office">${sample.pickup_code ? 'Gate Pickup Pass <span class="child-pass-status">Sample</span>' : "School Office"}</h2>
+        <p>${sample.pickup_code ? "Example pickup at 1:30 PM" : "Get help with pickup or your child’s school day."}</p>
+      </div>
+      ${sample.pickup_code
+        ? `<span class="profile-button pickup-code">${esc(sample.pickup_code)}</span>`
+        : `<a class="profile-button" href="${contact}">${contact.startsWith("tel:") ? "Call school" : "Message school"}</a>`}
+    </section>
+    <section class="child-team" aria-labelledby="child-team">
+      <div class="child-section-title"><h2 id="child-team">${profileIcon("👩‍🏫")} Teachers &amp; Caregivers</h2><span>${esc(s.class_name)}</span></div>
+      ${team.length ? `<div class="child-team-grid">${team.map((member) => `<article class="child-card child-team-member">
+        <div class="child-member"><span class="child-person-avatar" aria-hidden="true">${esc(member.avatar || initials(member.full_name))}</span>
+          <div><h3>${esc(member.full_name)}</h3><p>${esc(member.role)}</p></div></div>
+        ${member.description ? `<p class="child-card-copy">${esc(member.description)}</p>` : ""}
+        ${profileLink("messages", member.role === "Class Caregiver" ? "Ask about care" : "Message school")}
+      </article>`).join("")}</div>`
+      : `<div class="child-card child-section"><p class="child-card-copy">No classroom team is listed here yet.</p></div>`}
+    </section>
+    <section class="child-card child-section" aria-labelledby="child-care">
+      <div class="child-section-title"><h2 id="child-care">${profileIcon("❤️")} Care &amp; Well-being</h2></div>
+      ${sample.care ? `<dl class="child-care-grid">${sample.care.map(([label, emoji, value]) =>
+        `<div><dt>${esc(label)}</dt><dd>${profileIcon(emoji)} ${esc(value)}</dd></div>`).join("")}</dl>`
+      : `<p class="child-card-copy">Ask the school about allergies, meals or daily care routines.</p>${profileLink("messages", "Ask about care", "profile-inline")}`}
+    </section>
+    <section class="child-card child-section" aria-labelledby="child-family">
+      <div class="child-section-title"><h2 id="child-family">${profileIcon("👥")} ${familyTitle}</h2>
+        ${s.can_manage ? '<button class="profile-button profile-inline" type="button" data-edit="guardian">+ Add guardian</button>' : ""}
+      </div>
+      <ul class="child-family-list">${family.map((guardian) => `<li>
+        <span class="child-person-avatar" aria-hidden="true">${esc(initials(guardian.full_name))}</span>
+        <div><h3>${esc(guardian.full_name)}</h3><p>${esc(guardian.relationship)}</p></div>
+        ${sample.pickups ? '<span class="child-pickup-badge">Example</span>' : ""}
+      </li>`).join("")}</ul>
+    </section>
+    <section class="child-card child-section" aria-labelledby="child-milestones">
+      <div class="child-section-title"><h2 id="child-milestones">${profileIcon("🏆")} Little Milestones${sample.milestones ? " Unlocked" : ""}</h2></div>
+      ${sample.milestones ? `<ul class="child-milestones">${sample.milestones.map(([emoji, name]) =>
+        `<li>${profileIcon(emoji)}<strong>${esc(name)}</strong></li>`).join("")}</ul>`
+      : `<p class="child-card-copy">Explore the daily diary for updates from your child’s class.</p>${profileLink("diary", "Open daily diary", "profile-inline")}`}
+    </section>
+    <a class="profile-button child-contact" href="${contact}">${profileIcon("📞")} ${officeTitle}</a>
+  </div>`;
 }
 async function messageScreen(s) {
   const result = await api(`/children/${s.id}/messages?page=${page}`);
@@ -726,6 +890,17 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("click", async (event) => {
   const el = event.target.closest("button,a");
   if (!el) return;
+  if (el.dataset.todayDraft && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    const s = child();
+    if (s?.is_active) {
+      messageDraft = {
+        student: s.id,
+        text: el.dataset.todayDraft === "late"
+          ? `Hello, ${s.full_name} will be arriving late today. Expected arrival time: `
+          : `Hello, ${s.full_name} will be absent today. `,
+      };
+    }
+  }
   if (el.matches("[data-close]")) {
     if (!$("#editorForm button[type=submit]").disabled) $("#editor").close();
     return;
@@ -798,6 +973,7 @@ $("#editor").addEventListener("cancel", (event) => {
   if ($("#editorForm button[type=submit]").disabled) event.preventDefault();
 });
 $("#childSelect").addEventListener("change", (event) => {
+  messageDraft = null;
   selected = event.target.value;
   page = 1;
   render();
@@ -805,6 +981,7 @@ $("#childSelect").addEventListener("change", (event) => {
 window.addEventListener("hashchange", () => {
   if ($("#portal").hidden) return;
   page = 1;
+  if (route() !== "messages") messageDraft = null;
   render();
   window.scrollTo(0, 0);
   $("#main").focus({ preventScroll: true });
@@ -882,6 +1059,7 @@ $("#previewRole").addEventListener("change", async (event) => {
   generation++;
   preview.setRole(event.target.value);
   workspace = null;
+  messageDraft = null;
   $("#editor").close();
   selected = "";
   page = 1;
@@ -893,7 +1071,7 @@ async function start() {
   try {
     if (previewRequested) {
       $("#loginForm button[type=submit]").disabled = true;
-      const { createPreview } = await import("./parents-preview.js?v=2");
+      const { createPreview } = await import("./parents-preview.js?v=4");
       preview = createPreview();
       await enter();
       return;

@@ -79,6 +79,11 @@ def posts(student_id: UUID, user: User, repo: Repo,
         'p_student': str(student_id), 'p_kind': kind, 'p_page': page})
 
 
+@router.get('/children/{student_id}/profile')
+def child_profile(student_id: UUID, user: User, repo: Repo):
+    return repo.request('POST', '/rpc/parents_child_profile', data={'p_student': str(student_id)})
+
+
 @router.get('/children/{student_id}/calendar')
 def calendar(student_id: UUID, month: date, user: User, repo: Repo):
     return repo.request('POST', '/rpc/parents_calendar', data={

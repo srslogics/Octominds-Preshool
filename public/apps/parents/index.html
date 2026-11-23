@@ -11,7 +11,7 @@
     />
     <title>Families · OctoMinds</title>
     <link rel="icon" href="/assets/octominds-icon-192.png" />
-    <link rel="stylesheet" href="/apps/parents/parents.css?v=full-screen-1" />
+    <link rel="stylesheet" href="/apps/parents/parents.css?v=today-1" />
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -118,13 +118,22 @@
         <div class="app-body">
           <main id="main" tabindex="-1">
             <div class="page-heading">
-              <div>
-                <h1 id="pageTitle">Today at school</h1>
+              <a id="childBack" class="child-back" href="#/today" hidden><span aria-hidden="true">←</span> Today</a>
+              <div class="page-heading-copy">
+                <p id="todayGreeting" class="today-greeting" hidden></p>
+                <div class="page-title-line">
+                  <img id="childBrand" src="/assets/octominds-icon-192.png" alt="" width="32" height="32" hidden>
+                  <h1 id="pageTitle">Today at school</h1>
+                </div>
                 <p id="pageDescription"></p>
               </div>
               <div id="childPicker" class="child-picker">
-                <label for="childSelect">Viewing for</label
-                ><select id="childSelect"></select>
+                <label id="childPickerLabel" for="childSelect">Viewing for</label>
+                <span class="child-switch" aria-hidden="true">Switch <span>▾</span></span>
+                <span id="todayChildChoice" class="today-child-choice" aria-hidden="true" hidden>
+                  <span id="todayChildInitials"></span><strong id="todayChildName"></strong><span id="todayChildArrow">▾</span>
+                </span>
+                <select id="childSelect"></select>
               </div>
             </div>
             <div id="content" aria-live="polite"></div>
@@ -157,6 +166,6 @@
     <p id="toast" role="status" class="toast" hidden></p>
     <script src="/config.js"></script>
     <script src="/assets/session.js?v=1"></script>
-    <script type="module" src="/apps/parents/parents.js?v=guardian-1"></script>
+    <script type="module" src="/apps/parents/parents.js?v=today-1"></script>
   </body>
 </html>

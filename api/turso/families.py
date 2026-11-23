@@ -71,6 +71,24 @@ def workspace(access, p_today_month=None):
     return result
 
 
+def child_profile(access, p_student):
+    child = require_child(access, p_student)
+    teachers = access.db.all("""
+        select distinct p.full_name
+        from teacher_assignments t join profiles p on p.id=t.user_id
+        where t.class_id=? and p.is_active=1 and t.is_active=1
+          and t.starts_on<=date('now') and (t.ends_on is null or t.ends_on>=date('now'))
+          and exists (
+              select 1 from user_memberships m
+              where m.user_id=t.user_id and m.branch_id=t.branch_id and m.role='teacher' and m.is_active=1
+                and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
+          )
+        order by p.full_name
+        """, (child['class_id'],)) if access.class_open(child['class_id']) else []
+    return {'team': [{**teacher, 'role': 'Class teacher'} for teacher in teachers],
+            'office_phone': access.branches[child['branch_id']]['phone']}
+
+
 def enrollment_students(access):
     branches = [branch for branch in access.managed_branches if access.active(branch)]
     if not branches:

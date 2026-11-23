@@ -223,6 +223,7 @@ tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: #fcfbff; }
 td small { display: block; margin-top: 2px; color: var(--muted); font-weight: 400; }
 td button { font-size: .8125rem; min-height: 36px; padding: 5px 10px; }
+.class-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .cell-label { display: none; }
 .pill { display: inline-block; padding: 3px 8px; border-radius: 6px; background: #eeeaf7; color: #534078; font-size: .75rem; font-weight: 650; text-transform: capitalize; }
 .pill.active, .pill.accepted, .pill.assigned { background: #e2f4eb; color: #1d5d43; }

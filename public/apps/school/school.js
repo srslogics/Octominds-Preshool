@@ -38,6 +38,10 @@
   const administrator=()=>globalAdmin()||user?.role==='branch_admin';
   const workingCenter=()=>data?.centers.find(center => center.id === selected);
   const canManage=branch=>globalAdmin()||data?.memberships?.some(m=>m.role==='branch_admin'&&m.branch_id===branch&&m.is_active&&(!m.expires_at||Date.parse(m.expires_at)>Date.now()));
+  const className = classroom => [classroom.name, classroom.section].filter(Boolean).join(' ');
+  const canEnroll = classroom => classroom?.is_active && classroom.branch_id === selected &&
+    workingCenter()?.is_active && canManage(classroom.branch_id) &&
+    data.years.some(year => year.id === classroom.academic_year_id && year.status !== 'closed');
   const rows=kind=>(data?.[kind]||[]).filter(r=>!r.branch_id||r.branch_id===selected);
   const findName=(kind,id)=>(data?.[kind]||[]).find(r=>r.id===id)?.name||'Unavailable';
   const fullName=id=>access?.users.find(r=>r.id===id)?.full_name|| (id===user?.id ? user.full_name : 'Assigned teacher');
@@ -216,13 +220,16 @@
       if(page==='years')cells=[esc(r.name),dateRange(r),state(r.status)];
       if(page==='terms')cells=[esc(r.name),esc(findName('years',r.academic_year_id)),dateRange(r)];
       if(page==='programs')cells=[esc(r.name),esc(r.description||'—'),state(r.is_active?'active':'inactive')];
-      if(page==='classes')cells=[`${esc(r.name)} ${esc(r.section)}`,`${esc(findName('programs',r.program_id))}<small>${esc(findName('years',r.academic_year_id))}</small>`,`${esc(r.room||'Not set')}<small>Capacity ${esc(r.capacity)}</small>`,state(r.is_active?'active':'inactive')];
+      if(page==='classes')cells=[esc(className(r)),`${esc(findName('programs',r.program_id))}<small>${esc(findName('years',r.academic_year_id))}</small>`,`${esc(r.room||'Not set')}<small>Capacity ${esc(r.capacity)}</small>`,state(r.is_active?'active':'inactive')];
       if(page==='assignments')cells=[esc(fullName(r.user_id)),esc(findName('classes',r.class_id)),dateRange(r),state(assignmentStatus(r))];
       if(page==='holidays')cells=[esc(r.name),dateRange(r),state(r.is_active?'active':'inactive')];
       const yearId=r.academic_year_id||(page==='assignments'?data.classes.find(c=>c.id===r.class_id)?.academic_year_id:null);
       const closed=r.status==='closed'||data.years.some(y=>y.id===yearId&&y.status==='closed');
       const editable=canManage(page==='centers'?r.id:r.branch_id)&&!closed&&(page==='centers'||workingCenter()?.is_active);
-      cells.push(editable?button('Edit','edit',r.id):'<span class="tip">Read only</span>');
+      const edit = editable ? button('Edit','edit',r.id) : '<span class="tip">Read only</span>';
+      cells.push(page==='classes' && canEnroll(r)
+        ? `<div class="class-actions">${button('Add student','add-student',r.id,'primary')}${edit}</div>`
+        : edit);
       return cells;
     });$('#content').innerHTML=setupNotice+table(columns,body);
   }
@@ -308,6 +315,7 @@
       terms:[text('name','Term name'),select('academic_year_id','Academic year',options('years')),...dates],
       programs:[text('name','Program name'),text('description','Description','textarea',false),select('is_active','Status',active)],
       classes:[text('name','Class name'),text('section','Section','text',false),select('academic_year_id','Academic year',options('years')),select('program_id','Program',options('programs')),text('room','Room','text',false),text('capacity','Capacity','number'),select('is_active','Status',active)],
+      student:[text('full_name','Student’s full name')],
       assignments:[select('class_id','Class',options('classes')),select('user_id','Teacher',teachers()),text('starts_on','Start date','date'),text('ends_on','End date for temporary cover','date',false),select('is_active','Status',active)],
       holidays:[text('name','Holiday name'),...dates,select('is_active','Status',active)],
       invite:[text('full_name','Full name'),select('role','Role',roles,'Choose a role'),
@@ -330,12 +338,16 @@
     }
   }
   function openEditor(kind,id){
+    const classroom = kind==='student' ? data.classes.find(record => record.id === id) : null;
+    if (kind==='student' && !canEnroll(classroom)) return;
     const row=(data[kind]||[]).find(r=>r.id===id)||{};
-    editing={kind,row,branch:selected};
-    $('#editorTitle').textContent=kind==='invite'?'Invite a person':kind==='grant'?'Assign account access':kind==='password'?'Change your sign-in':`${id?'Edit':'Add'} ${recordNames[kind]}`;
-    $('#editor button[type=submit]').textContent=kind==='invite'?'Create invitation':kind==='grant'?'Assign access':'Save changes';
+    editing={kind,row,branch:selected,classroom};
+    $('#editorTitle').textContent=classroom?'Add student':kind==='invite'?'Invite a person':kind==='grant'?'Assign account access':kind==='password'?'Change your sign-in':`${id?'Edit':'Add'} ${recordNames[kind]}`;
+    $('#editor button[type=submit]').textContent=classroom?'Save student':kind==='invite'?'Create invitation':kind==='grant'?'Assign access':'Save changes';
     const center=workingCenter();
-    $('#editorHint').textContent=['invite','grant'].includes(kind)?(center?.is_active?`Working center: ${center.name}. Owner and management roles apply across all centers.`:'Only school-wide roles are available until you select an active center.'):kind==='years'?'Closing a year makes it read only. Close the current year before activating another.':kind==='assignments'?'The dates determine when the teacher gets access to this class.':kind==='centers'?'Opening hours use the center’s local time.':'';
+    $('#editorHint').textContent=classroom
+      ? `${className(classroom)} · ${center.name} · ${findName('years',classroom.academic_year_id)}`
+      : ['invite','grant'].includes(kind)?(center?.is_active?`Working center: ${center.name}. Owner and management roles apply across all centers.`:'Only school-wide roles are available until you select an active center.'):kind==='years'?'Closing a year makes it read only. Close the current year before activating another.':kind==='assignments'?'The dates determine when the teacher gets access to this class.':kind==='centers'?'Opening hours use the center’s local time.':'';
     $('#formError').textContent='';
     $('#fields').innerHTML=definition(kind).map(f=>{
       let value=row[f.key]??({timezone:'Asia/Kolkata',working_days:[1,2,3,4,5],is_active:true,status:'planned',section:''}[f.key]??'');
@@ -354,6 +366,12 @@
       phone.autocomplete = 'tel';
       phone.placeholder = 'e.g. +91 98765 43210';
       updateInviteFields();
+    }
+    if (classroom) {
+      const name = $('#field-full_name');
+      name.maxLength = 120;
+      name.closest('.form-field').classList.add('wide');
+      name.autofocus = true;
     }
     $('#editor').showModal();
   }
@@ -375,6 +393,18 @@
         values[f.key]=value;
       }
       if(values.ends_on&&values.starts_on&&values.ends_on<values.starts_on)throw Error('End date cannot be before start date.');
+      if (context.classroom) {
+        const studentName = values.full_name?.trim();
+        if (!studentName) throw Error('Enter the student’s full name.');
+        await api('/parents/students', {
+          full_name: studentName,
+          branch_id: context.classroom.branch_id,
+          class_id: context.classroom.id,
+        });
+        $('#editor').close();
+        notify(`${studentName} was added to ${className(context.classroom)}.`);
+        return;
+      }
       if(context.kind==='password'){
         if(values.password!==values.confirm)throw Error('Passwords do not match.');
         const legacy=user.email.endsWith('@auth.octominds.invalid');
@@ -420,6 +450,7 @@
       return;
     }
     if(action==='edit')return openEditor(route(),id);
+    if(action==='add-student')return openEditor('student',id);
     if(['invite','grant','password'].includes(action))return openEditor(action);
     if(action==='logout-all'){if(window.confirm('Sign out on all devices?'))return logout('global');return;}
     if(!window.confirm(action==='status'?'Change this account’s status? Suspension blocks application data access.':'Revoke this access?'))return;

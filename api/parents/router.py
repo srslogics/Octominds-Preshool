@@ -59,8 +59,10 @@ class Message(Fields):
 
 
 @router.get('/workspace')
-def workspace(user: User, repo: Repo):
-    return repo.request('POST', '/rpc/parents_workspace', data={})
+def workspace(user: User, repo: Repo, include_account: bool = False, today_month: date | None = None):
+    params = {'p_today_month': today_month.isoformat()} if today_month else {}
+    result = repo.request('POST', '/rpc/parents_workspace', data=params)
+    return {**result, 'account': user.session_details()} if include_account else result
 
 
 @router.get('/children/{student_id}/posts')

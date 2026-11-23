@@ -25,7 +25,12 @@ const A='00000000-0000-0000-0000-000000000101', B='00000000-0000-0000-0000-00000
    const selected=u.searchParams.get('branch_id');
    if(delay) await new Promise(res=>setTimeout(res,650));
    if(u.pathname.endsWith('/lookups'))return r.fulfill({json:{...lookup,categories:lookup.categories.filter(x=>!selected||x.branch_id===selected),locations:lookup.locations.filter(x=>!selected||x.branch_id===selected),items:items.filter(x=>!selected||x.branch_id===selected)}});
-   if(u.pathname.endsWith('/dashboard'))return r.fulfill({json:{active_items:selected?1:2,low_stock:0,out_of_stock:selected===A?0:1,movements_today:0}});
+   if(u.pathname.endsWith('/dashboard'))return r.fulfill({json:{
+     active_items:selected?1:2,low_stock:0,out_of_stock:selected===A?0:1,movements_today:0,
+     ...(u.searchParams.get('include_overview')==='true' ? {
+       recent_movements:[],restock_items:items.filter(item=>(!selected||item.branch_id===selected)&&item.stock_status==='out'),
+     } : {}),
+   }});
    if(u.pathname.endsWith('/movements'))return r.fulfill({json:{movements:[],total:0}});
    const filtered=items.filter(x=>(!selected||x.branch_id===selected)&&(!u.searchParams.get('search')||x.name.toLowerCase().includes(u.searchParams.get('search').toLowerCase()))&&(!u.searchParams.get('stock_status')||u.searchParams.get('stock_status')==='all'||x.stock_status===u.searchParams.get('stock_status')));
    return r.fulfill({json:{items:filtered,total:filtered.length,page:1,page_size:25}});

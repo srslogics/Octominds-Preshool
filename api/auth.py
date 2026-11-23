@@ -1,6 +1,6 @@
 """Account sessions backed by hashed opaque tokens in the application database."""
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from time import time
@@ -10,7 +10,6 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import Settings, get_settings
-from .turso.access import Access
 from .turso.db import token_hash, transaction
 
 MOBILE_LOGIN_SUFFIX = '@auth.octominds.invalid'
@@ -58,19 +57,31 @@ class CurrentUser:
     def role_label(self):
         return self.role.value.replace('_', ' ').title()
 
+    def session_details(self):
+        return {**asdict(self), 'role_label': self.role_label}
+
 
 bearer = HTTPBearer(auto_error=False)
 Credentials = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 
 
-def resolve_account(db, token):
+def session_params(token):
     if not token or len(token) > 256:
         raise HTTPException(401, 'Authentication required')
-    account = db.one("""
-        select p.*, a.email, a.email_confirmed_at from auth_sessions s
-        join accounts a on a.id=s.user_id join profiles p on p.id=a.id
-        where s.token_hash=? and s.expires_at>? and p.is_active=1 and a.email_confirmed_at is not null
-        """, (token_hash(token), int(time())))
+    return token_hash(token), int(time())
+
+
+SESSION_ACCOUNT = """
+    from auth_sessions s join accounts a on a.id=s.user_id join profiles p on p.id=a.id
+"""
+VALID_SESSION = """
+    s.token_hash=? and s.expires_at>? and p.is_active=1 and a.email_confirmed_at is not null
+"""
+
+
+def resolve_account(db, token):
+    account = db.one(f'select p.*, a.email, a.email_confirmed_at {SESSION_ACCOUNT} where {VALID_SESSION}',
+                     session_params(token))
     if not account:
         raise HTTPException(401, 'Your session expired. Please sign in again.')
     return account
@@ -96,13 +107,24 @@ def get_current_user(credentials: Credentials, settings: Annotated[Settings, Dep
     if not credentials:
         raise HTTPException(401, 'Authentication required')
     with transaction(settings) as db:
-        account = resolve_account(db, credentials.credentials)
-        access = Access(db, account['id'])
+        rows = db.all(f"""
+            select p.id,p.full_name,p.phone,a.email,m.role,m.branch_id,m.expires_at,b.name branch_name
+            {SESSION_ACCOUNT}
+            left join user_memberships m on m.user_id=p.id and m.is_active=1
+                and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
+                and (m.role in ('super_admin','management') or exists (
+                    select 1 from branches where id=m.branch_id and is_active=1))
+            left join branches b on b.id=m.branch_id
+            where {VALID_SESSION}
+            """, session_params(credentials.credentials))
+        if not rows:
+            raise HTTPException(401, 'Your session expired. Please sign in again.')
         try:
-            role, scopes = _resolve_memberships([m for m in access.memberships
-                if m['role'] in ('super_admin', 'management') or access.active(m['branch_id'])])
+            role, scopes = _resolve_memberships(rows)
         except PermissionError as exc:
             raise HTTPException(403, str(exc)) from exc
         branch = next(iter(scopes)) if '*' not in scopes and len(scopes) == 1 else None
+        account = rows[0]
+        branch_name = next((row['branch_name'] for row in rows if row['branch_id'] == branch), None) if branch else None
         return CurrentUser(account['id'], account['email'], account['phone'], role, branch,
-                           account['full_name'], access.branches.get(branch, {}).get('name'), scopes)
+                           account['full_name'], branch_name, scopes)

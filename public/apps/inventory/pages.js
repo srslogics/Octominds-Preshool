@@ -122,7 +122,9 @@ document.addEventListener('change', event => {
   if (event.target.id === 'historyType') { routeState.type = event.target.value; routeState.offset = 0; renderRoute(); }
 });
 // Existing stock writes refresh data; refresh the active route after that completes.
-document.addEventListener('inventory:loaded', () => renderRoute());
+document.addEventListener('inventory:loaded', event => {
+  if (!event.detail?.catalogueOnly) renderRoute();
+});
 document.addEventListener('inventory:loaded', () => {
   $$('#inventoryItemsBody .item-cell strong').forEach((name, index) => {
     const item = inventoryState.items[index];

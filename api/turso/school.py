@@ -38,9 +38,12 @@ def scope_rows(access, table):
     return access.db.all(f'select * from {table} where branch_id in ({placeholders}){extra} order by id', params)
 
 
-def workspace(access):
+def workspace(access, p_include_directory=False):
     rows = {kind: scope_rows(access,table) for kind,table in TABLES.items()}
-    return {**rows, 'memberships': access.memberships, 'students': families.enrollment_students(access)}
+    result = {**rows, 'memberships': access.memberships, 'students': families.enrollment_students(access)}
+    if p_include_directory and (access.global_roles or access.managed_branches):
+        result['directory'] = directory(access)
+    return result
 
 
 def require_open_year(access, year_id, branch):
@@ -122,9 +125,12 @@ def directory(access):
         from school_invitations i left join school_invitation_students l on l.invitation_id=i.id
         left join parent_students s on s.id=l.student_id order by i.created_at desc''')
                    if access.manage(i['branch_id'])]
-    audit = [a for a in db.all("""select id,actor_user_id,branch_id,event_type,entity_type,entity_id,occurred_at
-              from audit_events where event_type like 'school.%' order by occurred_at desc,id desc""")
-             if access.manage(a['branch_id'])][:100]
+    audit = []
+    if access.global_roles or access.managed_branches:
+        scope = '' if access.global_roles else f"and branch_id in ({','.join('?' for _ in access.managed_branches)})"
+        audit = db.all(f"""select id,actor_user_id,branch_id,event_type,entity_type,entity_id,occurred_at
+            from audit_events where event_type like 'school.%' {scope} order by occurred_at desc,id desc limit 100""",
+            () if access.global_roles else access.managed_branches)
     for record in users + invitations:
         record['phone'] = mobile_from_login(record['email'])
     return {'memberships': memberships, 'users': users, 'invitations': invitations, 'audit': audit}

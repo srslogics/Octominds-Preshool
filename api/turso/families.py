@@ -34,25 +34,41 @@ def scoped_children(access, class_id=None):
 
 
 
-def workspace(access):
+def workspace(access, p_today_month=None):
     db = access.db
-    classes = db.all("""select c.id,c.branch_id,trim(c.name||' '||c.section) name,b.name center_name,y.name year_name
-        from school_classes c join branches b on b.id=c.branch_id join academic_years y on y.id=c.academic_year_id
-        where c.is_active=1 and b.is_active=1 and y.status<>'closed' order by b.name,c.name,c.section""")
-    classes = [{**c, 'can_manage': access.manage(c['branch_id'])} for c in classes if access.teach(c['id'])]
+    classes = []
+    if access.class_ids:
+        slots = ','.join('?' for _ in access.class_ids)
+        classes = db.all(f"""select c.id,c.branch_id,trim(c.name||' '||c.section) name,b.name center_name,y.name year_name
+            from school_classes c join branches b on b.id=c.branch_id join academic_years y on y.id=c.academic_year_id
+            where c.id in ({slots}) order by b.name,c.name,c.section""", access.class_ids)
+        for classroom in classes:
+            classroom['can_manage'] = access.manage(classroom['branch_id'])
     students = scoped_children(access)
     for child in students:
         child.update(can_manage=access.manage(child['branch_id']), can_publish=access.teach(child['class_id']),
                      relationship=access.guardian_links.get(child['id']))
-    guardians = [g for g in db.all('select g.*,s.branch_id from parent_guardians g join parent_students s on s.id=g.student_id')
-                 if access.manage(g.pop('branch_id'))]
-    accounts = db.all("""select p.id user_id,m.branch_id,p.full_name,a.email from profiles p
-        join accounts a on a.id=p.id join user_memberships m on m.user_id=p.id
-        where p.is_active=1 and a.email_confirmed_at is not null and m.is_active=1 and m.role='parent'
-        and (m.expires_at is null or julianday(m.expires_at)>julianday('now')) order by p.full_name""")
-    return {'classes': classes, 'students': students, 'guardians': guardians,
-            'parent_accounts': [{**a, 'phone': mobile_from_login(a['email'])}
-                                for a in accounts if access.manage(a['branch_id'])]}
+    guardians, accounts = [], []
+    if access.managed_branches:
+        slots = ','.join('?' for _ in access.managed_branches)
+        guardians = db.all(f"""select g.* from parent_guardians g join parent_students s on s.id=g.student_id
+                               where s.branch_id in ({slots})""", access.managed_branches)
+        accounts = db.all(f"""select p.id user_id,m.branch_id,p.full_name,a.email from profiles p
+            join accounts a on a.id=p.id join user_memberships m on m.user_id=p.id
+            where m.branch_id in ({slots}) and p.is_active=1 and a.email_confirmed_at is not null
+            and m.is_active=1 and m.role='parent'
+            and (m.expires_at is null or julianday(m.expires_at)>julianday('now')) order by p.full_name""",
+            access.managed_branches)
+    result = {'classes': classes, 'students': students, 'guardians': guardians,
+              'parent_accounts': [{**a, 'phone': mobile_from_login(a['email'])} for a in accounts]}
+    if p_today_month and students:
+        child = next((student for student in students if student['is_active']), students[0])
+        result['today'] = {
+            'student_id': child['id'], 'month': p_today_month,
+            'posts': recent_posts(access, child, limit=3),
+            'calendar': child_calendar(access.db, child, p_today_month),
+        }
+    return result
 
 
 def enrollment_students(access):
@@ -179,17 +195,22 @@ def unpublish(access, p_post):
 
 def feed(access, p_student, p_kind='all', p_page=1):
     child = require_child(access, p_student)
-    db = access.db
+    posts, total = recent_posts(access, child, p_kind, 20, (p_page - 1) * 20, include_total=True)
+    return {'posts': posts, 'total': total, 'page': p_page, 'page_size': 20}
+
+
+def recent_posts(access, child, kind='all', limit=20, offset=0, *, include_total=False):
     clause = 'where p.is_published=1 and p.class_id=? and (p.student_id is null or p.student_id=?)'
-    args = [child['class_id'], p_student]
-    if p_kind != 'all':
+    args = [child['class_id'], child['id']]
+    if kind != 'all':
         clause += ' and p.kind=?'
-        args.append(p_kind)
-    total = db.scalar('select count(*) from parent_posts p '+clause, args)
-    rows = db.all('''select p.*,a.full_name author_name from parent_posts p join profiles a on a.id=p.created_by '''
-                  +clause+' order by p.created_at desc,p.id desc limit 20 offset ?', [*args, (p_page-1)*20])
-    return {'posts': [{**p, 'can_withdraw': can_edit_post(access,p)} for p in rows],
-            'total': total, 'page': p_page, 'page_size': 20}
+        args.append(kind)
+    rows = access.db.all('''select p.*,a.full_name author_name from parent_posts p join profiles a on a.id=p.created_by '''
+                         +clause+' order by p.created_at desc,p.id desc limit ? offset ?', [*args, limit, offset])
+    posts = [{**p, 'can_withdraw': can_edit_post(access,p)} for p in rows]
+    if include_total:
+        return posts, access.db.scalar('select count(*) from parent_posts p '+clause, args)
+    return posts
 
 
 def thread(access, p_student, p_page=1):
@@ -212,12 +233,15 @@ def send_message(access, p_student, p_body):
 
 def calendar(access, p_student, p_month):
     child = require_child(access, p_student)
-    db = access.db
+    return child_calendar(access.db, child, p_month)
+
+
+def child_calendar(db, child, month):
     events = db.all("""select id,title,body,event_date from parent_posts where is_published=1
         and kind='event' and class_id=? and (student_id is null or student_id=?)
         and event_date>=date(?,'start of month') and event_date<date(?,'start of month','+1 month')
-        order by event_date,id""", (child['class_id'], p_student, p_month, p_month))
+        order by event_date,id""", (child['class_id'], child['id'], month, month))
     holidays = db.all("""select id,name,starts_on,ends_on from school_holidays where is_active=1 and branch_id=?
         and ends_on>=date(?,'start of month') and starts_on<date(?,'start of month','+1 month') order by starts_on,id""",
-        (child['branch_id'],p_month,p_month))
+        (child['branch_id'],month,month))
     return {'events': events, 'holidays': holidays}

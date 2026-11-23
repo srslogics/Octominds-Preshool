@@ -24,10 +24,13 @@ class Access:
             and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
             """, (actor,))
         self.global_roles = {m['role'] for m in self.memberships if m['role'] in GLOBAL}
-        self.branches = {b['id']: b for b in db.all('select * from branches')}
         self.roles = {}
         for membership in self.memberships:
             self.roles.setdefault(membership['branch_id'], set()).add(membership['role'])
+
+    @cached_property
+    def branches(self):
+        return {branch['id']: branch for branch in self.db.all('select * from branches')}
 
     def active(self, branch):
         return bool(self.branches.get(branch, {}).get('is_active'))
@@ -56,10 +59,14 @@ class Access:
 
     @cached_property
     def managed_branches(self):
-        return {branch for branch in self.branches if self.manage(branch)}
+        if self.global_roles:
+            return set(self.branches)
+        return {branch for branch, roles in self.roles.items() if 'branch_admin' in roles and self.active(branch)}
 
     @cached_property
     def class_ids(self):
+        if not self.managed_branches and not any('teacher' in roles for roles in self.roles.values()):
+            return set()
         rows = self.db.all("""
             select c.id,c.branch_id,a.id as assignment_id from school_classes c
             join branches b on b.id=c.branch_id join academic_years y on y.id=c.academic_year_id
@@ -72,6 +79,8 @@ class Access:
 
     @cached_property
     def guardian_links(self):
+        if not any('parent' in roles for roles in self.roles.values()):
+            return {}
         return {row['student_id']:row['relationship'] for row in self.db.all("""
             select g.student_id,g.relationship from parent_guardians g
             join parent_students s on s.id=g.student_id

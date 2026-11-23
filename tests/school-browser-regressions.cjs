@@ -15,15 +15,18 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
  await page.route('**/config.js',r=>r.fulfill({contentType:'application/javascript',body:`window.OCTOMINDS_CONFIG={apiBaseUrl:'${origin}'};`}));
  await page.route('**/api/v1/auth/**',r=>{requests.push(r.request().url());return r.fulfill({json:{access_token:'test',refresh_token:'refresh',expires_at:Math.floor(Date.now()/1000)+3600}});});
  await page.route('**/api/v1/**',async r=>{
-  const path=new URL(r.request().url()).pathname;if(path.startsWith('/api/v1/auth/'))return r.fallback();requests.push(path);
+  const url=new URL(r.request().url());const path=url.pathname;if(path.startsWith('/api/v1/auth/'))return r.fallback();requests.push(path);
   if(reject)return r.fulfill({status:401,json:{detail:'Invalid session'}});
-  if(path.endsWith('/session'))return r.fulfill({json:{id:'owner',email:'owner@test.invalid',full_name:'School Owner',role,branch_id:null}});
   if(r.request().method()==='POST'){
    const body=r.request().postDataJSON();writes.push({path,body});
    if(conflict)return r.fulfill({status:409,json:{detail:'This record changed. Reload before saving.'}});
    return r.fulfill({json:{id:'new',token:'a'.repeat(64),version:2}});
   }
-  if(path.endsWith('/workspace')){if(delay)await new Promise(r=>setTimeout(r,delay));return r.fulfill({json:workspace});}
+  if(path.endsWith('/workspace')){
+   if(delay)await new Promise(r=>setTimeout(r,delay));
+   const account={id:'owner',email:'owner@test.invalid',full_name:'School Owner',role,branch_id:null};
+   return r.fulfill({json:{...workspace,account,...(url.searchParams.has('include_directory')&&role==='super_admin'?{directory}:{})}});
+  }
   if(path.endsWith('/access'))return r.fulfill({json:directory});
   return r.fulfill({status:404,json:{detail:'Unknown test route'}});
  });
@@ -32,6 +35,8 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
  async function login(){await page.locator('#identity').fill('owner@test.invalid');await page.locator('#password').fill('a-valid-test-password');await page.locator('#signInForm button').click();await page.locator('#navigation a').first().waitFor();}
  await page.goto(origin+'/school');await login();
  assert.equal(await page.locator('#pageTitle').innerText(),'Overview');pass('email login loads school workspace');
+ assert.equal(requests.includes('/api/v1/session'),false);
+ assert.equal(requests.includes('/api/v1/school/access'),false);
  if(screenshotDir){await mkdir(screenshotDir,{recursive:true});await page.screenshot({path:screenshotDir+'/school-overview-desktop.png',fullPage:true});}
  await go('centers');await page.locator('[data-action=edit][data-id=a]').click();
  await page.locator('[name=name]').fill('Green Park Updated');await page.locator('[name=working_days][value="6"]').check();await page.locator('#editorForm button[type=submit]').click();await page.locator('#editor').waitFor({state:'hidden'});
@@ -50,6 +55,7 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
  await go('programs');await page.locator('#centerSelect').selectOption('b');assert.ok((await page.locator('#content').innerText()).includes('Kindergarten'));assert.ok(!(await page.locator('#content').innerText()).includes('Learning through play'));pass('center switching filters school records');
  await page.locator('#centerSelect').selectOption('a');await page.locator('[data-action=edit][data-id=p]').click();conflict=true;await page.locator('#editorForm button[type=submit]').click();await page.locator('#formError').filter({hasText:'record changed'}).waitFor();assert.equal(await page.locator('[name=name]').inputValue(),'Nursery');conflict=false;await page.locator('#editor [data-close]').first().click();pass('stale edit preserves input and explains reload');
  await go('access');await page.locator('[data-action=invite]').click();await page.locator('[name=full_name]').fill('New Teacher');await page.locator('[name=email]').fill('new@test.invalid');
+ assert.equal(requests.filter(path=>path==='/api/v1/school/access').length,1);
  assert.equal(await page.locator('[name=role]').inputValue(),'');
  assert.equal(await page.locator('[name=role]').evaluate(field=>field.validity.valueMissing),true);
  await page.locator('[name=role]').selectOption('teacher');await page.locator('#editorForm button[type=submit]').click();await page.locator('#resultDialog').waitFor();assert.equal(writes.at(-1).body.branch_id,'a');assert.ok((await page.locator('#inviteLink').inputValue()).endsWith('#invite='+'a'.repeat(64)));await page.locator('#resultDialog [data-close]').click();
@@ -90,7 +96,7 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
  await go('classes');
  assert.equal(await page.locator('[data-action=add-student]').count(),0);
  delay=700;await page.locator('[data-action=reload]').click();await page.locator('#signOut').click();await page.waitForTimeout(900);assert.equal(await page.locator('#workspace').isVisible(),false);assert.equal(await page.locator('#content').innerText(),'');delay=0;pass('late response after logout cannot restore school data');
- requests.length=0;await page.goto(origin+'/school#invite='+'b'.repeat(64));await page.waitForURL('**/school#/overview');await login();assert.ok(requests.includes('/api/v1/school/accept-invitation'));assert.ok(requests.indexOf('/api/v1/school/accept-invitation')<requests.indexOf('/api/v1/session'));assert.ok(!page.url().includes('invite='));pass('invitation is consumed before membership lookup and removed from URL');
+ requests.length=0;await page.goto(origin+'/school#invite='+'b'.repeat(64));await page.waitForURL('**/school#/overview');await login();assert.ok(requests.includes('/api/v1/school/accept-invitation'));assert.ok(requests.indexOf('/api/v1/school/accept-invitation')<requests.indexOf('/api/v1/school/workspace'));assert.ok(!page.url().includes('invite='));pass('invitation is consumed before membership lookup and removed from URL');
  await page.goto(origin+'/school#recovery=1234567890123456789012345678901234567890123');await page.locator('#newPassword').fill('new-strong-test-password');await page.locator('#confirmPassword').fill('new-strong-test-password');await page.locator('#resetForm button').click();await page.locator('#workspace').waitFor();await page.locator('#signOut').click();await page.locator('#auth').waitFor();assert.equal(await page.locator('.auth-actions').isVisible(),true);pass('recovery returns to usable normal sign-in after logout');
  await login();reject=true;await page.locator('[data-action=reload]').click();await page.locator('#auth').waitFor();assert.equal(await page.locator('#workspace').isVisible(),false);pass('rejected refreshed session clears the workspace');
  assert.deepEqual(errors,[]);pass('no uncaught browser errors');

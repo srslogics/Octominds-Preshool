@@ -14,6 +14,7 @@ export function createGallery({
     urls = new Set(),
     view = null,
     upload = null,
+    thumbnailObserver = null,
     viewerRequest = 0;
   const photoLabel = (p) => p.caption || "School photo";
   const option = (id, text, selected) =>
@@ -74,6 +75,8 @@ export function createGallery({
     $("#albumEditor").close();
   }
   function reset() {
+    thumbnailObserver?.disconnect();
+    thumbnailObserver = null;
     closeViewer();
     closeUploader();
     for (const url of urls) URL.revokeObjectURL(url);
@@ -120,28 +123,48 @@ export function createGallery({
       "blob",
     );
   }
-  async function mount() {
-    const c = context(),
-      images = Array.from(document.querySelectorAll("[data-gallery-thumb]"));
-    async function next() {
-      while (images.length && current(c)) {
-        const el = images.shift(),
-          photo = { id: el.dataset.galleryThumb };
-        try {
-          const blob = await image(photo, true);
-          if (!current(c) || !el.isConnected) return;
-          el.onload = () => el.parentElement?.classList.add("loaded");
-          el.src = blobURL(blob);
-        } catch {
-          if (current(c) && el.isConnected) {
-            el.parentElement.classList.add("photo-failed");
-            el.parentElement.querySelector(".photo-loading").textContent =
-              "Photo unavailable · tap to retry";
-          }
+  function mount() {
+    const c = context();
+    const images = document.querySelectorAll("[data-gallery-thumb]");
+    const waiting = [];
+    let active = 0;
+    async function loadThumbnail(el) {
+      try {
+        const blob = await image({ id: el.dataset.galleryThumb }, true);
+        if (!current(c) || !el.isConnected) return;
+        el.onload = () => el.parentElement?.classList.add("loaded");
+        el.src = blobURL(blob);
+      } catch {
+        if (current(c) && el.isConnected) {
+          el.parentElement.classList.add("photo-failed");
+          el.parentElement.querySelector(".photo-loading").textContent =
+            "Photo unavailable · tap to retry";
         }
+      } finally {
+        active--;
+        loadReadyThumbnails();
       }
     }
-    await Promise.all([next(), next(), next()]);
+    function loadReadyThumbnails() {
+      while (active < 3 && waiting.length && current(c)) {
+        active++;
+        void loadThumbnail(waiting.shift());
+      }
+    }
+    if (!("IntersectionObserver" in window)) {
+      waiting.push(...images);
+      loadReadyThumbnails();
+      return;
+    }
+    thumbnailObserver = new IntersectionObserver((entries, observer) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        observer.unobserve(entry.target);
+        waiting.push(entry.target.querySelector("[data-gallery-thumb]"));
+      }
+      loadReadyThumbnails();
+    }, { rootMargin: "200px 0px" });
+    for (const el of images) thumbnailObserver.observe(el.parentElement);
   }
   async function showPhoto(index) {
     if (!view) return;

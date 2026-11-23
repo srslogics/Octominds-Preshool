@@ -137,6 +137,13 @@ class TursoWorkflows(unittest.TestCase):
         self.assertEqual(result['to_quantity_after'],'2.345')
         self.assertEqual(self.request('POST','/inventory/transfers',self.owner,transfer,code=201).json(),result)
         self.assertEqual(self.request('GET','/inventory/movements?movement_type=transfer',self.owner).json()['total'],2)
+        dashboard = self.request('GET', '/inventory/dashboard', self.owner).json()
+        overview = self.request('GET', '/inventory/dashboard?include_overview=true', self.owner).json()
+        self.assertEqual(dashboard, {key: overview[key] for key in dashboard})
+        self.assertNotIn('restock_items', dashboard)
+        self.assertEqual(len(overview['recent_movements']), 3)
+        self.assertEqual(overview['restock_items'], [])
+        self.request('GET', '/inventory/dashboard?include_overview=true', self.parent, code=403)
         detail=self.request('GET',f'/inventory/items/{item_id}?branch_id={self.center}',self.owner).json()
         self.assertEqual(detail['quantity_on_hand'],10.125)
         self.assertEqual(detail['standard_cost'],9.95)
@@ -265,3 +272,25 @@ class TursoWorkflows(unittest.TestCase):
         self.assertNotIn('turso',self.client.get('/config.js').text.lower())
         self.assertEqual(self.request('GET','/school/workspace',self.teacher).json()['centers'][0]['id'],self.center)
         self.request('POST','/school/records/programs',self.teacher,{'data':{'branch_id':self.other_center,'name':'Other'}},code=403)
+
+    def test_workspace_starts_with_verified_account_and_scoped_view_data(self):
+        school = '/school/workspace?include_account=true&include_directory=true'
+        owner = self.request('GET', school, self.owner).json()
+        self.assertEqual(owner['account']['id'], self.owner_id)
+        self.assertIn('directory', owner)
+        teacher = self.request('GET', school, self.teacher).json()
+        self.assertEqual(teacher['account']['role'], 'teacher')
+        self.assertNotIn('directory', teacher)
+
+        self.request('POST', '/parents/posts', self.teacher, {
+            'class_id': self.classroom, 'student_id': self.child, 'kind': 'diary',
+            'title': 'First update', 'body': 'Visible to the linked guardian',
+        }, code=201)
+        route = '/parents/workspace?include_account=true&today_month=2026-11-01'
+        result = self.request('GET', route, self.parent).json()
+        self.assertEqual(result['account']['id'], self.parent_id)
+        self.assertEqual(result['today']['student_id'], self.child)
+        self.assertEqual([post['title'] for post in result['today']['posts']], ['First update'])
+        self.assertIn('holidays', result['today']['calendar'])
+        self.assertNotIn('today', self.request('GET', route, self.unlinked).json())
+        self.request('GET', route, code=401)

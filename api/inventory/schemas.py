@@ -119,6 +119,8 @@ class InventoryDashboard(BaseModel):
     low_stock: int
     out_of_stock: int
     movements_today: int
+    recent_movements: list[dict] | None = None
+    restock_items: list[dict] | None = None
 
 
 class ItemListResponse(BaseModel):

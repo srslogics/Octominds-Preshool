@@ -290,13 +290,10 @@ watchdog.unref();
   await p.route("**/api/v1/**", async (r) => {
     const u = new URL(r.request().url());
     if (u.pathname.startsWith("/api/v1/auth/")) return r.fallback();
-    if (u.pathname === "/api/v1/session")
-      return r.fulfill({
-        json: { id: "parent", full_name: "Test Parent", role: "parent" },
-      });
     if (u.pathname.endsWith("/workspace"))
       return r.fulfill({
         json: {
+          account: { id: "parent", full_name: "Test Parent", role: "parent" },
           students: [
             {
               id: A,

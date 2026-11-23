@@ -12,6 +12,7 @@
   const labels = {super_admin:'Owner',management:'Management',branch_admin:'Center administrator',teacher:'Teacher',accountant:'Accountant',admission_counsellor:'Admissions counsellor',parent:'Parent or guardian'};
   let emailCode, session, user, data, access, selected='', editing=null, generation=0, loading=false, noticeTimer;
   let accessSection = 'members';
+  let accessRequest = null, accessError = null;
   const pages = {
     overview:['Overview','See what’s in place and what your center needs next.'],
     school:['School profile','Maintain the identity and contact details shared by your centers.'],
@@ -36,6 +37,7 @@
   const route=()=>location.hash.replace(/^#\/?/,'')||'overview';
   const globalAdmin=()=>['super_admin','management'].includes(user?.role);
   const administrator=()=>globalAdmin()||user?.role==='branch_admin';
+  const needsAccess=page=>administrator()&&['access','assignments'].includes(page);
   const workingCenter=()=>data?.centers.find(center => center.id === selected);
   const canManage=branch=>globalAdmin()||data?.memberships?.some(m=>m.role==='branch_admin'&&m.branch_id===branch&&m.is_active&&(!m.expires_at||Date.parse(m.expires_at)>Date.now()));
   const className = classroom => [classroom.name, classroom.section].filter(Boolean).join(' ');
@@ -112,27 +114,49 @@
       showInvitationControls();
       notify('Invitation accepted. Welcome to your school.');
     }
-    const version=++generation;
-    const current=await api('/session');if(version!==generation||!session)return;
-    user=current;$('#userName').textContent=user.full_name;$('#userRole').textContent=labels[user.role]||user.role;
+    await load();
+  }
+  function showWorkspace(account) {
+    user=account;$('#userName').textContent=user.full_name;$('#userRole').textContent=labels[user.role]||user.role;
     $('#userInitials').textContent = (user.full_name || '').trim().split(/\s+/).slice(0, 2).map(name => name[0]).join('').toUpperCase();
     $('#auth').hidden=true;$('#workspace').hidden=false;
     $('#inventoryLink').hidden=!['super_admin','management','branch_admin','accountant'].includes(user.role);
-    await load();
+  }
+  function loadAccess(){
+    if(accessRequest) return;
+    const version=generation;
+    accessRequest=api('/school/access').then(directory=>{
+      if(version===generation) access=directory;
+    }).catch(error=>{
+      if(version===generation) accessError=error;
+    }).finally(()=>{
+      if(version!==generation) return;
+      accessRequest=null;
+      if(needsAccess(route())) render();
+    });
   }
   async function load(){
     const version=++generation;loading=true;$('#content').innerHTML='<p role="status">Loading your school workspace…</p>';$('#toolbar').replaceChildren();
+    access=null;accessRequest=null;accessError=null;
     try{
-      const fresh=await api('/school/workspace');
-      const directory=administrator()?await api('/school/access'):null;
+      const params=new URLSearchParams({include_account:'true'});
+      if(['access','assignments'].includes(route())) params.set('include_directory','true');
+      const fresh=await api(`/school/workspace?${params}`);
       if(version!==generation||!session)return;
-      data=fresh;access=directory;
+      data=fresh;
+      access=fresh.directory || null;
+      showWorkspace(fresh.account);
       if(!data.centers.some(c=>c.id===selected))selected=user.branch_id||data.centers.find(c=>c.is_active)?.id||data.centers[0]?.id||'';
       $('#centerSelect').innerHTML=data.centers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.is_active?'':' (archived)'}</option>`).join('')||'<option value="">No centers yet</option>';
       $('#centerSelect').value=selected;
       $('#centerSelect').disabled = !data.centers.length;
       loading=false;render();
-    }catch(error){if(version!==generation)return;loading=false;$('#content').innerHTML=`<div class="error" role="alert">${esc(error.message)}</div><button data-action="reload">Try again</button>`;}
+    }catch(error){
+      if(version!==generation)return;
+      loading=false;
+      if(!user) throw error;
+      $('#content').innerHTML=`<div class="error" role="alert">${esc(error.message)}</div><button data-action="reload">Try again</button>`;
+    }
   }
   const button=(text,action,id='',cls='')=>`<button type="button" class="${cls}" data-action="${action}" data-id="${esc(id)}">${text}</button>`;
   const state=v=>`<span class="pill ${esc(v)}">${esc(v)}</span>`;
@@ -194,6 +218,13 @@
     $('#pageTitle').textContent=info?.[0]||'Page not found';$('#pageDescription').textContent=info?.[1]||'Choose a destination from the navigation.';
     document.title=`${info?.[0]||'School'} · OctoMinds`;
     $('#toolbar').innerHTML=button('Refresh','reload');
+    if(needsAccess(page)&&!access){
+      $('#content').innerHTML=accessError
+        ? `<div class="error" role="alert">${esc(accessError.message)}</div>`
+        : '<p role="status">Loading people and access…</p>';
+      if(!accessError) loadAccess();
+      return;
+    }
     if(!info){$('#content').innerHTML='<a href="#/overview">Return to overview</a>';return;}
     if(page==='overview'){renderOverview();return;}
     if(page==='school'){

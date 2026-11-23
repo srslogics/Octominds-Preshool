@@ -277,13 +277,10 @@ watchdog.unref();
       u = new URL(req.url()),
       method = req.method();
     if (u.pathname.startsWith("/api/v1/auth/")) return r.fallback();
-    if (u.pathname === "/api/v1/session")
-      return r.fulfill({
-        json: { id: "teacher", full_name: "Test Teacher", role: "teacher" },
-      });
     if (u.pathname.endsWith("/workspace"))
       return r.fulfill({
         json: {
+          account: { id: "teacher", full_name: "Test Teacher", role: "teacher" },
           students: [
             {
               id: A,

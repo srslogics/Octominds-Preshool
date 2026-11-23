@@ -56,12 +56,20 @@ def gallery(access, p_student=None, p_page=1):
             left join parent_students s on s.id=a.student_id
             where a.status<>'withdrawn' order by a.taken_on desc,a.id desc""")
         albums = [a for a in albums if manage(access,a)]
-    items=[]
+    items = []
     for album in albums[(p_page-1)*12:p_page*12]:
-        row = detail(access,album['id'],p_student)
-        if not child:
-            row.update(class_name=album['class_name'], student_name=album['student_name'])
-        items.append(row)
+        row = {k: v for k, v in album.items() if k != 'created_by'}
+        items.append({**row, 'can_manage': manage(access, album), 'photos': []})
+    if items:
+        by_id = {item['id']: item for item in items}
+        slots = ','.join('?' for _ in by_id)
+        photos = db.all(f"""select album_id,id,caption,status,width,height from parent_photos
+            where album_id in ({slots}) and status in ('ready','pending')
+            order by created_at,id""", by_id)
+        for photo in photos:
+            album = by_id[photo.pop('album_id')]
+            if photo['status'] == 'ready' or album['can_manage']:
+                album['photos'].append(photo)
     return {'albums':items,'total':len(albums),'page':p_page,'page_size':12}
 
 

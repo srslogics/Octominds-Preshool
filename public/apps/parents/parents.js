@@ -1,12 +1,9 @@
-import { createPreview } from "./parents-preview.js?v=2";
-import { createGallery } from "./parents-gallery.js?v=3";
+import { createGallery } from "./parents-gallery.js?v=4";
 const $ = (s) => document.querySelector(s);
 const cfg = window.OCTOMINDS_CONFIG || {};
 const KEY = "octominds.inventory.session";
-const preview =
-  new URLSearchParams(location.search).get("preview") === "1"
-    ? createPreview()
-    : null;
+const previewRequested = new URLSearchParams(location.search).get("preview") === "1";
+let preview = null;
 const esc = (v) =>
   String(v ?? "").replace(
     /[&<>"']/g,
@@ -267,36 +264,19 @@ async function api(
 }
 async function enter() {
   const version = epoch;
-  if (preview) user = preview.user();
-  else {
-    if (session?.expires_at && session.expires_at * 1000 < Date.now() + 30000)
-      await refresh();
-    let response = await fetch("/api/v1/session", {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    if (response.status === 401) {
-      await refresh();
-      response = await fetch("/api/v1/session", {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-    }
-    if (version !== epoch) return;
-    if (!response.ok) {
-      if (response.status === 401) clearSession();
-      throw Error(
-        "We couldn’t load your school access. Please try again or contact your school.",
-      );
-    }
-    user = await response.json();
+  let fresh;
+  if (!preview) {
+    const params = new URLSearchParams({ include_account: "true" });
+    if (route() === "today") params.set("today_month", firstDay());
+    fresh = await api(`/workspace?${params}`);
   }
   if (version !== epoch) return;
+  user = preview ? preview.user() : fresh.account;
   $("#auth").hidden = true;
   $("#portal").hidden = false;
   $("#previewBanner").hidden = !preview;
   $("#accountName").textContent = user.full_name || "Your account";
-  await loadWorkspace();
+  await loadWorkspace(fresh);
 }
 function navigation() {
   const items = [
@@ -321,11 +301,11 @@ function navigation() {
     )
     .join("");
 }
-async function loadWorkspace() {
+async function loadWorkspace(initialData) {
   const version = ++generation;
   $("#content").innerHTML = loading();
   try {
-    const fresh = await api("/workspace");
+    const fresh = initialData ?? await api("/workspace");
     if (version !== generation || !user) return;
     workspace = fresh;
     if (!workspace.students.some((s) => s.id === selected))
@@ -340,7 +320,7 @@ async function loadWorkspace() {
       )
       .join("");
     $("#childSelect").value = selected;
-    await render();
+    await render(initialData?.today);
   } catch (error) {
     if (version === generation && user) showError(error);
   }
@@ -374,7 +354,7 @@ const gallery = createGallery({
   toast,
   refresh: loadWorkspace,
 });
-async function render() {
+async function render(initialToday) {
   gallery.reset();
   if (!workspace || !user) return;
   const r = route(),
@@ -417,10 +397,13 @@ async function render() {
     } else if (r === "calendar") {
       html = await calendarScreen(s);
     } else if (r === "today") {
-      const [feed, calendar] = await Promise.all([
-        api(`/children/${s.id}/posts`),
-        api(`/children/${s.id}/calendar?month=${firstDay()}`),
-      ]);
+      const todayMonth = firstDay();
+      const [feed, calendar] = initialToday?.student_id === s.id && initialToday.month === todayMonth
+        ? [initialToday, initialToday.calendar]
+        : await Promise.all([
+            api(`/children/${s.id}/posts`),
+            api(`/children/${s.id}/calendar?month=${todayMonth}`),
+          ]);
       const upcoming = [
         ...calendar.events,
         ...calendar.holidays.map((h) => ({ ...h, event_date: h.starts_on })),
@@ -891,7 +874,10 @@ $("#previewRole").addEventListener("change", async (event) => {
 });
 async function start() {
   try {
-    if (preview) {
+    if (previewRequested) {
+      $("#loginForm button[type=submit]").disabled = true;
+      const { createPreview } = await import("./parents-preview.js?v=2");
+      preview = createPreview();
       await enter();
       return;
     }
@@ -901,6 +887,8 @@ async function start() {
     if (session) await enter();
   } catch (error) {
     $("#authMessage").textContent = error.message;
+  } finally {
+    if (previewRequested) $("#loginForm button[type=submit]").disabled = false;
   }
 }
 if ("serviceWorker" in navigator)

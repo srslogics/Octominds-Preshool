@@ -101,7 +101,7 @@ def readiness(config: Annotated[Settings, Depends(get_settings)]) -> Response:
 
 @app.get("/api/v1/session", response_model=SessionResponse, tags=["authentication"])
 def session(user: Annotated[CurrentUser, Depends(get_current_user)]) -> SessionResponse:
-    return SessionResponse(**user.__dict__, role_label=user.role_label)
+    return SessionResponse(**user.session_details())
 
 
 @app.get("/config.js", include_in_schema=False)

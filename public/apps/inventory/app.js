@@ -12,6 +12,7 @@ let currentUser = null;
 let toastTimer;
 let centerFormExpanded = false;
 let inventoryLoadVersion = 0;
+let inventoryFullLoad = false;
 let movementAttempt = null;
 let refreshInFlight = null;
 
@@ -97,6 +98,7 @@ function saveSession(value, persistent) {
 function clearSession() {
   document.dispatchEvent(new Event('inventory:logout'));
   inventoryLoadVersion += 1;
+  inventoryFullLoad = false;
   setInventoryLoading(false);
   session = null;
   currentUser = null;
@@ -423,41 +425,56 @@ function renderMovements(data) {
   }).join('');
 }
 
-async function loadInventory({ keepLookups = false } = {}) {
+async function loadInventory({ keepLookups = false, catalogueOnly = false } = {}) {
   if (!session?.access_token) return;
+  catalogueOnly = catalogueOnly && Boolean(inventoryState.lookups) && !inventoryFullLoad;
   const version = ++inventoryLoadVersion;
+  inventoryFullLoad = !catalogueOnly;
   setInventoryLoading(true);
-  document.dispatchEvent(new Event('inventory:loading'));
+  if (!catalogueOnly) document.dispatchEvent(new Event('inventory:loading'));
   try {
+    const itemsRequest = apiRequest(inventoryPath('/items', { search: inventoryState.search, stock_status: inventoryState.stockStatus, page: inventoryState.page, page_size: inventoryState.pageSize }));
+    if (catalogueOnly) {
+      const items = await itemsRequest;
+      if (version === inventoryLoadVersion && session) {
+        renderInventoryItems(items);
+        document.dispatchEvent(new CustomEvent('inventory:loaded', { detail: { catalogueOnly: true } }));
+      }
+      return;
+    }
     const requests = [
-      apiRequest(inventoryPath('/dashboard')),
-      apiRequest(inventoryPath('/items', { search: inventoryState.search, stock_status: inventoryState.stockStatus, page: inventoryState.page, page_size: inventoryState.pageSize })),
-      apiRequest(inventoryPath('/movements', { limit: 12 })),
-      apiRequest(inventoryPath('/items', { stock_status: 'low', page: 1, page_size: 5 })),
-      apiRequest(inventoryPath('/items', { stock_status: 'out', page: 1, page_size: 5 })),
+      apiRequest(inventoryPath('/dashboard', { include_overview: true })),
+      itemsRequest,
     ];
     if (!keepLookups || !inventoryState.lookups) requests.push(apiRequest(inventoryPath('/lookups')));
-    const [dashboard, items, movements, attention, outOfStock, lookups] = await Promise.all(requests);
+    const [dashboard, items, lookups] = await Promise.all(requests);
     if (version !== inventoryLoadVersion || !session) return;
     if (lookups) renderInventoryLookups(lookups);
     renderInventoryMetrics(dashboard);
     renderInventoryItems(items);
-    renderMovements(movements);
-    renderLowStock([...outOfStock.items, ...attention.items]);
+    renderMovements({ movements: dashboard.recent_movements });
+    renderLowStock(dashboard.restock_items);
     document.dispatchEvent(new Event('inventory:loaded'));
   } catch (error) {
     if (version !== inventoryLoadVersion || !session) return;
     showToast(error.message, 'error');
     inventoryState.items = [];
-    document.dispatchEvent(new CustomEvent('inventory:error', { detail: error.message }));
-    ['inventoryActiveItems', 'inventoryLowStock', 'inventoryOutOfStock', 'inventoryMovementsToday'].forEach(id => { document.getElementById(id).textContent = '—'; });
+    if (!catalogueOnly) document.dispatchEvent(new CustomEvent('inventory:error', { detail: error.message }));
     $('#inventoryResultCount').textContent = 'Unavailable';
     $('#inventoryPageLabel').textContent = '—';
     $('#inventoryPrev').disabled = true;
     $('#inventoryNext').disabled = true;
-    ['inventoryMovementList', 'inventoryLowStockList'].forEach(id => { document.getElementById(id).innerHTML = '<div class="mini-empty"><strong>Temporarily unavailable</strong><span>Retry loading inventory to refresh this panel.</span></div>'; });
+    if (!catalogueOnly) {
+      ['inventoryActiveItems', 'inventoryLowStock', 'inventoryOutOfStock', 'inventoryMovementsToday'].forEach(id => { document.getElementById(id).textContent = '—'; });
+      ['inventoryMovementList', 'inventoryLowStockList'].forEach(id => { document.getElementById(id).innerHTML = '<div class="mini-empty"><strong>Temporarily unavailable</strong><span>Retry loading inventory to refresh this panel.</span></div>'; });
+    }
     $('#inventoryItemsBody').innerHTML = `<tr class="table-state-row"><td colspan="6"><div class="table-state error-state" role="alert"><span><i class="bi bi-exclamation-triangle"></i></span><strong>Inventory could not be loaded</strong><p>${escapeHtml(error.message)}</p><button type="button" class="secondary-button" data-retry-inventory>Try again</button></div></td></tr>`;
-  } finally { if (version === inventoryLoadVersion) setInventoryLoading(false); }
+  } finally {
+    if (version === inventoryLoadVersion) {
+      inventoryFullLoad = false;
+      setInventoryLoading(false);
+    }
+  }
 }
 
 function selectedWriteBranch() {
@@ -751,21 +768,21 @@ function applyStockFilter(status, clearSearch = true) {
   inventoryState.page = 1;
   $('#inventoryStockFilter').value = status;
   if (clearSearch) { inventoryState.search = ''; $('#inventorySearch').value = ''; }
-  loadInventory({ keepLookups: true });
+  loadInventory({ keepLookups: true, catalogueOnly: true });
 }
 $$('[data-stock-filter]').forEach((control) => control.addEventListener('click', () => {
   applyStockFilter(control.dataset.stockFilter);
   if (control.tagName === 'BUTTON') $('#stockCatalogue').scrollIntoView({ block: 'start' });
 }));
 $('#clearInventoryFilters').addEventListener('click', () => applyStockFilter('all'));
-$('#inventorySearch').addEventListener('input', (event) => { clearTimeout(inventorySearchTimer); inventorySearchTimer = setTimeout(() => { inventoryState.search = event.target.value.trim(); inventoryState.page = 1; loadInventory({ keepLookups: true }); }, 320); });
-$('#inventoryStockFilter').addEventListener('change', (event) => { inventoryState.stockStatus = event.target.value; inventoryState.page = 1; loadInventory({ keepLookups: true }); });
+$('#inventorySearch').addEventListener('input', (event) => { clearTimeout(inventorySearchTimer); inventorySearchTimer = setTimeout(() => { inventoryState.search = event.target.value.trim(); inventoryState.page = 1; loadInventory({ keepLookups: true, catalogueOnly: true }); }, 320); });
+$('#inventoryStockFilter').addEventListener('change', (event) => { inventoryState.stockStatus = event.target.value; inventoryState.page = 1; loadInventory({ keepLookups: true, catalogueOnly: true }); });
 $('#inventoryBranchSelect').addEventListener('change', () => { inventoryState.page = 1; inventoryState.lookups = null; centerFormExpanded = false; $('#topbarBranch').textContent = $('#inventoryBranchSelect').selectedOptions[0]?.textContent || 'All centers'; loadInventory(); });
-$('#inventoryPrev').addEventListener('click', () => { inventoryState.page -= 1; loadInventory({ keepLookups: true }); });
-$('#inventoryNext').addEventListener('click', () => { inventoryState.page += 1; loadInventory({ keepLookups: true }); });
+$('#inventoryPrev').addEventListener('click', () => { inventoryState.page -= 1; loadInventory({ keepLookups: true, catalogueOnly: true }); });
+$('#inventoryNext').addEventListener('click', () => { inventoryState.page += 1; loadInventory({ keepLookups: true, catalogueOnly: true }); });
 $('#refreshInventory').addEventListener('click', () => loadInventory());
 $('#viewLowStock').addEventListener('click', () => { applyStockFilter('low'); $('#stockCatalogue').scrollIntoView({ block: 'start' }); });
-$('#inventoryLowStockList').addEventListener('click', (event) => { const item = event.target.closest('[data-filter-item]'); if (!item) return; clearTimeout(inventorySearchTimer); $('#inventorySearch').value = item.dataset.filterItem; inventoryState.search = item.dataset.filterItem; inventoryState.stockStatus = 'all'; $('#inventoryStockFilter').value = 'all'; inventoryState.page = 1; loadInventory({ keepLookups: true }); $('#stockCatalogue').scrollIntoView({ block: 'start' }); });
+$('#inventoryLowStockList').addEventListener('click', (event) => { const item = event.target.closest('[data-filter-item]'); if (!item) return; clearTimeout(inventorySearchTimer); $('#inventorySearch').value = item.dataset.filterItem; inventoryState.search = item.dataset.filterItem; inventoryState.stockStatus = 'all'; $('#inventoryStockFilter').value = 'all'; inventoryState.page = 1; loadInventory({ keepLookups: true, catalogueOnly: true }); $('#stockCatalogue').scrollIntoView({ block: 'start' }); });
 
 if (!configured()) $('#configurationNotice').classList.remove('hidden');
 // Session restoration begins in pages.js after all navigation handlers are ready.

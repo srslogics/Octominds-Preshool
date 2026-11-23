@@ -81,6 +81,15 @@ def record_movement(access, data, location, kind, delta, balance, cost=None, gro
         'idempotency_key':key,'posted_by':access.actor,'posted_at':now()})
 
 
+def movement_rows(db, where, args, limit, offset):
+    rows = db.all(f"""select m.id,m.branch_id,m.movement_type,m.quantity,m.signed_quantity,m.quantity_after,m.reference,m.notes,
+        m.posted_at,i.name item_name,i.sku,i.unit,l.name location_name from
+        (select * from inventory_movements where {where} order by posted_at desc,id desc limit ? offset ?) m
+        join inventory_items i on i.id=m.item_id join inventory_locations l on l.id=m.location_id
+        order by m.posted_at desc,m.id desc""", [*args, limit, offset])
+    return [unscaled(row) for row in rows]
+
+
 class InventoryRepository(SchoolRepository):
     def lookups(self, branch_id):
         with self.access() as access:
@@ -132,15 +141,25 @@ class InventoryRepository(SchoolRepository):
                 items.append({**unscaled(row),'balances':parts,'location_names':list(dict.fromkeys(p['inventory_locations']['name'] for p in parts))})
             return {'items':items,'total':total,'page':page,'page_size':page_size}
 
-    def dashboard(self,branch_id):
+    def dashboard(self, branch_id, *, include_overview=False):
         with self.access() as access:
             db=access.db
             where,branches=scope(access,branch_id)
-            result=db.one(f"""with scoped as (select id,reorder_level from inventory_items where is_active=1 and {where}),
-                quantities as (select i.id,i.reorder_level,coalesce(sum(s.quantity_on_hand),0) quantity
-                   from scoped i left join inventory_stock_balances s on s.item_id=i.id group by i.id)
+            quantities = f"""with scoped as (
+                select id,name,unit,reorder_level from inventory_items where is_active=1 and {where}
+            ), quantities as (
+                select i.id,i.name,i.unit,i.reorder_level,coalesce(sum(s.quantity_on_hand),0) quantity
+                from scoped i left join inventory_stock_balances s on s.item_id=i.id group by i.id
+            )"""
+            restock = """,
+                (select json_group_array(json_object('name',name,'unit',unit,'quantity_on_hand',quantity,
+                    'stock_status',case when quantity<=0 then 'out' else 'low' end))
+                 from (select name,unit,quantity from quantities where quantity<=0 or quantity<=reorder_level
+                       order by (quantity>0),name,id limit 5)) restock_items""" if include_overview else ''
+            result = db.one(quantities + f"""
                 select count(*) active_items, count(*) filter(where quantity>0 and quantity<=reorder_level) low_stock,
-                count(*) filter(where quantity<=0) out_of_stock from quantities""",branches)
+                count(*) filter(where quantity<=0) out_of_stock {restock} from quantities
+                """, branches)
             movements=0
             for branch in branches:
                 try:
@@ -151,7 +170,11 @@ class InventoryRepository(SchoolRepository):
                 intervals=[datetime.combine(day,time.min,tz).astimezone(UTC).isoformat() for day in (today,today+timedelta(days=1))]
                 movements+=db.scalar('select count(*) from inventory_movements where branch_id=? and posted_at>=? and posted_at<?',
                                      [branch,*intervals])
-            return {**result,'movements_today':movements}
+            result['movements_today'] = movements
+            if include_overview:
+                result['restock_items'] = [unscaled(item) for item in json.loads(result['restock_items'])]
+                result['recent_movements'] = movement_rows(db, where, branches, 6, 0)
+            return result
 
     def list_movements(self,branch_id,limit,offset,movement_type):
         with self.access() as access:
@@ -163,12 +186,7 @@ class InventoryRepository(SchoolRepository):
                 args.append(movement_type)
             db=access.db
             total=db.scalar('select count(*) from inventory_movements where '+where,args)
-            rows=db.all(f"""select m.id,m.branch_id,m.movement_type,m.quantity,m.signed_quantity,m.quantity_after,m.reference,m.notes,
-                m.posted_at,i.name item_name,i.sku,i.unit,l.name location_name from
-                (select * from inventory_movements where {where} order by posted_at desc,id desc limit ? offset ?) m
-                join inventory_items i on i.id=m.item_id join inventory_locations l on l.id=m.location_id
-                order by m.posted_at desc,m.id desc""",[*args,limit,offset])
-            return {'movements':[unscaled(row) for row in rows],'total':total}
+            return {'movements':movement_rows(db, where, args, limit, offset),'total':total}
 
     def create_row(self,table,data):
         if table not in {'inventory_categories','inventory_locations','inventory_items'}:

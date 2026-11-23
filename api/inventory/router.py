@@ -62,17 +62,18 @@ def create_center(
         _raise_domain_error(error, request)
 
 
-@router.get("/dashboard", response_model=InventoryDashboard)
+@router.get("/dashboard", response_model=InventoryDashboard, response_model_exclude_unset=True)
 def dashboard(
     request: Request,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)],
     settings: Annotated[Settings, Depends(get_settings)],
     branch_id: UUID | None = None,
+    include_overview: bool = False,
 ):
     branch = resolve_branch(user, branch_id)
     try:
-        return _service(credentials, settings).dashboard(branch)
+        return _service(credentials, settings).dashboard(branch, include_overview=include_overview)
     except InventoryError as error:
         _raise_domain_error(error, request)
 

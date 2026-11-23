@@ -15,8 +15,8 @@ class InventoryService:
     def list_items(self, branch_id, search, stock_status, page, page_size, item_id=None):
         return self.repository.list_items(branch_id, search, stock_status, page, page_size, item_id)
 
-    def dashboard(self, branch_id):
-        return self.repository.dashboard(branch_id)
+    def dashboard(self, branch_id, *, include_overview=False):
+        return self.repository.dashboard(branch_id, include_overview=include_overview)
 
     def list_movements(self, branch_id, limit, offset=0, movement_type='all'):
         return self.repository.list_movements(branch_id, limit, offset, movement_type)

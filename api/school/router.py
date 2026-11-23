@@ -193,8 +193,13 @@ def validate(model, data):
 
 @router.get('/workspace')
 def workspace(user: Annotated[CurrentUser, Depends(get_current_user)],
-              repo: Annotated[SchoolRepository, Depends(repository)]):
-    return repo.request('POST', '/rpc/school_workspace', data={})
+              repo: Annotated[SchoolRepository, Depends(repository)],
+              include_account: bool = False, include_directory: bool = False):
+    params = {'p_include_directory': True} if include_directory and user.role in {
+        Role.SUPER_ADMIN, Role.MANAGEMENT, Role.BRANCH_ADMIN
+    } else {}
+    result = repo.request('POST', '/rpc/school_workspace', data=params)
+    return {**result, 'account': user.session_details()} if include_account else result
 
 
 @router.post('/records/{kind}')

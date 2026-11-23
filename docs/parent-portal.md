@@ -15,7 +15,9 @@ The recordings supplied on 21 November 2026 are the product reference. This rele
 
 ## Access model
 
-A center-level parent membership does **not** grant access to every child. An active child link, active parent membership in that child's center, active profile, and active center are required. Administrators link only active, email-confirmed parent accounts in the same center. Invitation acceptance and initial account setup reuse `/school`.
+A center-level parent membership does **not** grant access to every child. An active child link, active parent membership in that child's center, active profile, and active center are required. Administrators link only active parent accounts that have finished setup in the same center.
+
+For mobile sign-in, select the working center in School Administration. Go to **People and access → Invite a person**, choose **Parent or guardian**, and use **Mobile number** as the sign-in method. Enter the parent's 10-digit Indian mobile number, create the invitation, and share the one-time link directly with that number. The link expires in seven days. The parent enters the same number to set a six-digit PIN, or signs in with their existing PIN to accept. They can then sign in at `/parents` using that number and PIN. Use **School desk → Connect a family** to link the accepted account to the child. Email invitations remain available from the same form.
 
 Teachers require both an active teacher membership and a current class assignment in an open academic year. Teacher membership alone does not grant a class roster. Administrators manage children only in their authorized centers. The API checks role and child scope before returning records or changing data. Links, registrations and school posts create audit events. Only the backend connects to Turso. Message authorship is derived from the authenticated identity, never the submitted body.
 

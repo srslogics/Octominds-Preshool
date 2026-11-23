@@ -1,4 +1,5 @@
 """Account sessions backed by hashed opaque tokens in the application database."""
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -11,6 +12,25 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from .config import Settings, get_settings
 from .turso.access import Access
 from .turso.db import token_hash, transaction
+
+MOBILE_LOGIN_SUFFIX = '@auth.octominds.invalid'
+
+
+def normalize_mobile(value):
+    number = re.sub(r'[\s()-]', '', value)
+    match = re.fullmatch(r'(?:\+?91)?([6-9][0-9]{9})', number)
+    return match[1] if match else None
+
+
+def mobile_login(number):
+    return f'{number}{MOBILE_LOGIN_SUFFIX}'
+
+
+def mobile_from_login(email):
+    if email.endswith(MOBILE_LOGIN_SUFFIX):
+        number = email.removesuffix(MOBILE_LOGIN_SUFFIX)
+        return number if re.fullmatch(r'[6-9][0-9]{9}', number) else None
+    return None
 
 
 class Role(StrEnum):

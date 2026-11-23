@@ -584,7 +584,7 @@ function updateGuardianAccounts() {
       workspace.parent_accounts.filter(
         (a) => a.branch_id === student?.branch_id,
       ),
-      (a) => `${a.full_name} · ${a.email}`,
+      (a) => `${a.full_name} · ${a.phone || a.email}`,
     );
 }
 function openEditor(kind, id) {

@@ -4,6 +4,9 @@
   const cfg = window.OCTOMINDS_CONFIG || {};
   const KEY = 'octominds.inventory.session';
   const INVITE = 'octominds.school.invitation';
+  const INVITE_METHOD = 'octominds.school.invitation.method';
+  const mobileInvite = () => sessionStorage.getItem(INVITE_METHOD) === 'mobile' && Boolean(sessionStorage.getItem(INVITE));
+  const contact = person => person?.phone || person?.email || '';
   const authDescription = 'Sign in with your email and password or your mobile number and PIN.';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = {super_admin:'Owner',management:'Management',branch_admin:'Center administrator',teacher:'Teacher',accountant:'Accountant',admission_counsellor:'Admissions counsellor',parent:'Parent or guardian'};
@@ -40,15 +43,30 @@
   const fullName=id=>access?.users.find(r=>r.id===id)?.full_name|| (id===user?.id ? user.full_name : 'Assigned teacher');
   const notify=message=>{clearTimeout(noticeTimer);$('#notice').textContent=message;$('#notice').hidden=false;noticeTimer=setTimeout(()=>$('#notice').hidden=true,6500);};
   const saveSession=(value,persistent)=>{session=value;sessionStorage.setItem(KEY,JSON.stringify(value));if(persistent)localStorage.setItem(KEY,JSON.stringify(value));else localStorage.removeItem(KEY);};
-  function showInvitationControls() {
+  function forgetInvitation() {
+    sessionStorage.removeItem(INVITE);
+    sessionStorage.removeItem(INVITE_METHOD);
+  }
+  function showInvitationControls(existingPin = false) {
     const invited = Boolean(sessionStorage.getItem(INVITE));
-    $('#createAccount').hidden = !invited;
+    const mobile = mobileInvite();
+    const settingPin = mobile && !existingPin;
+    $('#mobileSignupForm').hidden = !settingPin;
+    $('#signInForm').hidden = settingPin;
+    $('.auth-actions').hidden = mobile;
+    $('#createAccount').hidden = !invited || mobile;
+    $('#useExistingPin').hidden = !settingPin;
+    $('#useNewPin').hidden = !mobile || !existingPin;
     $('#dismissInvitation').hidden = !invited;
-    $('#authDescription').textContent = invited
+    $('#authTitle').textContent = settingPin ? 'Set up your parent account' : 'Welcome back';
+    $('#authDescription').textContent = mobile
+      ? (settingPin ? 'Enter the mobile number your school invited and choose a six-digit PIN.'
+        : 'Sign in with the invited mobile number and your existing PIN to accept.')
+      : invited
       ? 'Enter the email address on your invitation. If this is your first visit, choose Create invited account.'
       : authDescription;
   }
-  function resetAuth(){ $('#signInForm').hidden=false; $('.auth-actions').hidden=false; $('#resetForm').hidden=true; $('#resetForm').reset(); $('#password').value=''; $('#authTitle').textContent='Welcome back'; showInvitationControls(); }
+  function resetAuth(){ $('#resetForm').hidden=true; $('#resetForm').reset(); $('#mobileSignupForm').reset(); $('#password').value=''; showInvitationControls(); }
   function setMenu(open) {
     $('#schoolSidebar').toggleAttribute('data-open', open);
     $('#navToggle').setAttribute('aria-expanded', String(open));
@@ -79,7 +97,17 @@
   }
   async function enter(){
     const invitation=sessionStorage.getItem(INVITE);
-    if(invitation){await api('/school/accept-invitation',{token:invitation});sessionStorage.removeItem(INVITE);showInvitationControls();notify('Invitation accepted. Welcome to your school.');}
+    if(invitation){
+      const mobile = mobileInvite();
+      await api('/school/accept-invitation',{token:invitation});
+      forgetInvitation();
+      if (mobile) {
+        location.replace('/parents');
+        return;
+      }
+      showInvitationControls();
+      notify('Invitation accepted. Welcome to your school.');
+    }
     const version=++generation;
     const current=await api('/session');if(version!==generation||!session)return;
     user=current;$('#userName').textContent=user.full_name;$('#userRole').textContent=labels[user.role]||user.role;
@@ -217,7 +245,7 @@
     const inScope = row => !selected || row.branch_id === selected || !row.branch_id;
     if (accessSection === 'members') {
       const body = access.memberships.filter(inScope).map(m=>[
-        `${esc(fullName(m.user_id))}<small>${esc(access.users.find(u=>u.id===m.user_id)?.email)}</small>`,
+        `${esc(fullName(m.user_id))}<small>${esc(contact(access.users.find(u=>u.id===m.user_id)))}</small>`,
         `${esc(labels[m.role])}<small>${esc(m.branch_id?findName('centers',m.branch_id):'All centers')}</small>`,
         `${state(!m.is_active?'revoked':m.expires_at&&Date.parse(m.expires_at)<=Date.now()?'expired':'active')}<small>${esc(m.expires_at?new Date(m.expires_at).toLocaleString():'No expiry')}</small>`,
         m.is_active&&m.user_id!==user.id&&mayGrant(m.role)?button('Revoke','revoke',m.id):'',
@@ -226,7 +254,7 @@
     }
     if (accessSection === 'invitations') {
       const body=access.invitations.filter(inScope).map(i=>[
-        `${esc(i.full_name)}<small>${esc(i.email)}</small>`,
+        `${esc(i.full_name)}<small>${esc(contact(i))}</small>`,
         esc(labels[i.role]),
         state(i.accepted_at?'accepted':i.revoked_at?'revoked':Date.parse(i.expires_at)<Date.now()?'expired':'pending'),
         !i.accepted_at&&!i.revoked_at&&mayGrant(i.role)?button('Revoke invitation','revoke_invite',i.id):'',
@@ -282,10 +310,24 @@
       classes:[text('name','Class name'),text('section','Section','text',false),select('academic_year_id','Academic year',options('years')),select('program_id','Program',options('programs')),text('room','Room','text',false),text('capacity','Capacity','number'),select('is_active','Status',active)],
       assignments:[select('class_id','Class',options('classes')),select('user_id','Teacher',teachers()),text('starts_on','Start date','date'),text('ends_on','End date for temporary cover','date',false),select('is_active','Status',active)],
       holidays:[text('name','Holiday name'),...dates,select('is_active','Status',active)],
-      invite:[text('full_name','Full name'),text('email','Email address','email'),select('role','Role',roles,'Choose a role'),text('expires_at','Access expiry (optional)','datetime-local',false)],
-      grant:[select('user_id','Account',(access?.users||[]).filter(u=>u.is_active&&u.id!==user.id).map(u=>[u.id,`${u.full_name} (${u.email})`]),'Choose an account'),select('role','Role',roles,'Choose a role'),text('expires_at','Access expiry (optional)','datetime-local',false)],
+      invite:[text('full_name','Full name'),select('role','Role',roles,'Choose a role'),
+        select('method','Sign-in method',[['email','Email address'],['mobile','Mobile number']]),
+        text('email','Email address','email'),text('phone','Mobile number','tel'),
+        text('expires_at','Access expiry (optional)','datetime-local',false)],
+      grant:[select('user_id','Account',(access?.users||[]).filter(u=>u.is_active&&u.id!==user.id).map(u=>[u.id,`${u.full_name} (${contact(u)})`]),'Choose an account'),select('role','Role',roles,'Choose a role'),text('expires_at','Access expiry (optional)','datetime-local',false)],
       password:[text('current_password','Current password or PIN','password'),text('password','New password or PIN','password'),text('confirm','Confirm password or PIN','password')]
     };return fields[kind]||[];
+  }
+  function updateInviteFields(roleChanged = false) {
+    const parent = $('#field-role').value === 'parent';
+    const method = $('#field-method');
+    if (roleChanged) method.value = parent ? 'mobile' : 'email';
+    const mobile = parent && method.value === 'mobile';
+    for (const [field, visible] of [[method, parent], [$('#field-email'), !mobile], [$('#field-phone'), mobile]]) {
+      field.closest('.form-field').hidden = !visible;
+      field.disabled = !visible;
+      field.required = visible;
+    }
   }
   function openEditor(kind,id){
     const row=(data[kind]||[]).find(r=>r.id===id)||{};
@@ -306,8 +348,19 @@
       else control=`<input id="${fieldId}" name="${f.key}" type="${f.type}" value="${esc(value)}" ${f.required?'required':''} ${f.type==='number'?'min="0" max="100000" step="1"':''} ${f.type==='password'?'autocomplete="new-password" minlength="6"':'maxlength="500"'}>`;
       return `<div class="form-field${f.type==='textarea'?' wide':''}"><label for="${fieldId}">${esc(f.label)}</label>${control}</div>`;
     }).join('');
+    if (kind === 'invite') {
+      const phone = $('#field-phone');
+      phone.maxLength = 30;
+      phone.autocomplete = 'tel';
+      phone.placeholder = 'e.g. +91 98765 43210';
+      updateInviteFields();
+    }
     $('#editor').showModal();
   }
+  $('#editorForm').addEventListener('change', event => {
+    if (editing?.kind !== 'invite') return;
+    if (['role', 'method'].includes(event.target.name)) updateInviteFields(event.target.name === 'role');
+  });
   $('#editorForm').addEventListener('submit',async event=>{
     event.preventDefault();const context=editing;const button=event.submitter;button.disabled=true;$('#formError').textContent='';
     try{
@@ -334,10 +387,20 @@
           throw Error('Select an active working center before assigning this role.');
         }
         values.branch_id=schoolWide?null:context.branch;
+        const inviteByMobile = context.kind === 'invite' && values.method === 'mobile';
+        delete values.method;
         const result=await api(`/school/access/${context.kind}`,values);
         accessSection = context.kind==='invite' ? 'invitations' : 'members';
         $('#editor').close();await load();
-        if(context.kind==='invite'){$('#copyStatus').textContent='';$('#inviteLink').value=`${location.origin}/school#invite=${result.token}`;$('#resultDialog').showModal();}else notify('Account access assigned.');return;
+        if(context.kind==='invite'){
+          const fragment = inviteByMobile ? 'mobile-invite' : 'invite';
+          $('#copyStatus').textContent='';
+          $('#inviteInstructions').textContent = inviteByMobile
+            ? 'Send this link directly to the invited mobile number. The parent has seven days to set up a PIN or accept with their existing PIN.'
+            : 'Send this link directly to the person you invited. They have seven days to accept it with their invited email address.';
+          $('#inviteLink').value=`${location.origin}/school#${fragment}=${result.token}`;
+          $('#resultDialog').showModal();
+        }else notify('Account access assigned.');return;
       }
       if(!['school','centers'].includes(context.kind))values.branch_id=context.branch;
       if(context.row.id&&context.kind==='years'&&values.status==='closed'&&!window.confirm('Close this academic year? Its setup will become read only.'))return;
@@ -382,11 +445,12 @@
   });
   $('.skip').addEventListener('click',event=>{
     event.preventDefault();
-    const target = $('#workspace').hidden ? ($('#resetForm').hidden ? '#identity' : '#newPassword') : '#main';
+    const target = !$('#workspace').hidden ? '#main'
+      : !$('#resetForm').hidden ? '#newPassword' : !$('#mobileSignupForm').hidden ? '#invitedMobile' : '#identity';
     $(target).focus();
   });
   $('#centerSelect').addEventListener('change',event=>{selected=event.target.value;render();});
-  window.addEventListener('hashchange',()=>{const params=new URLSearchParams(location.hash.slice(1));if(params.has('invite')||params.has('confirm')||params.has('recovery')){location.reload();return;}if(user){setMenu(false);render();$('#main').focus();}});
+  window.addEventListener('hashchange',()=>{const params=new URLSearchParams(location.hash.slice(1));if(['invite','mobile-invite','confirm','recovery'].some(key=>params.has(key))){location.reload();return;}if(user){setMenu(false);render();$('#main').focus();}});
   document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',event=>{if(d.querySelector('button[type=submit]:disabled'))event.preventDefault();}));
   $('#copyInvite').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#inviteLink').value);$('#copyStatus').textContent='Invitation link copied.';}catch{$('#inviteLink').focus();$('#inviteLink').select();$('#copyStatus').textContent='Select and copy the invitation link.';}});
   async function logout(scope='local'){
@@ -399,12 +463,54 @@
     event.preventDefault();event.submitter.disabled=true;$('#authMessage').textContent='Signing in…';
     try{
       const identity=$('#identity').value.trim(), password=$('#password').value;
+      if (mobileInvite() && identity.includes('@')) throw Error('Enter the mobile number on your invitation.');
       const mobile=identity.replace(/\D/g,'').slice(-10);
       if(!identity.includes('@')&&(!/^[6-9]\d{9}$/.test(mobile)||!/^\d{6}$/.test(password)))throw Error('Enter a valid mobile number and six-digit PIN, or use your email and password.');
       const email=identity.includes('@')?identity:`${mobile}@auth.octominds.invalid`;
       saveSession(await auth('/token?grant_type=password',{email,password}),$('#remember').checked);
       await enter();$('#password').value='';$('#authMessage').textContent='';
     }catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
+  });
+  $('#useExistingPin').addEventListener('click', () => {
+    $('#identity').value = $('#invitedMobile').value;
+    $('#mobileSignupForm').reset();
+    $('#authMessage').textContent = '';
+    showInvitationControls(true);
+    $('#identity').focus();
+  });
+  $('#useNewPin').addEventListener('click', () => {
+    $('#invitedMobile').value = $('#identity').value;
+    $('#password').value = '';
+    $('#authMessage').textContent = '';
+    showInvitationControls();
+    $('#invitedMobile').focus();
+  });
+  $('#mobileSignupForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.submitter;
+    const pin = $('#newPin').value;
+    if (pin !== $('#confirmPin').value) {
+      $('#authMessage').textContent = 'The PINs do not match.';
+      $('#confirmPin').focus();
+      return;
+    }
+    button.disabled = true;
+    $('#authMessage').textContent = 'Setting up your account…';
+    try {
+      const result = await auth('/claim-mobile-invitation', {
+        phone: $('#invitedMobile').value,
+        pin,
+        invitation_token: sessionStorage.getItem(INVITE),
+      });
+      saveSession(result, false);
+      forgetInvitation();
+      $('#mobileSignupForm').reset();
+      location.replace('/parents');
+    } catch (error) {
+      $('#authMessage').textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
   });
   $('#createAccount').addEventListener('click',async event=>{
     const email=$('#identity').value.trim(), invitation_token=sessionStorage.getItem(INVITE);
@@ -429,19 +535,27 @@
       try{await enter();}catch(error){$('#authMessage').textContent=error.status===403?'Password saved. Open your original school invitation to finish joining.':error.message;}
     }catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
   });
-  $('#dismissInvitation').addEventListener('click',()=>{sessionStorage.removeItem(INVITE);clearSession();$('#authMessage').textContent='Invitation dismissed. Sign in to access your existing account.';});
+  $('#dismissInvitation').addEventListener('click',()=>{forgetInvitation();clearSession();$('#authMessage').textContent='Invitation dismissed. Sign in to access your existing account.';});
   async function start(){
     try{
       const hash=new URLSearchParams(location.hash.slice(1));
-      if(hash.has('invite')){const token=hash.get('invite');if(!/^[a-f0-9]{64}$/.test(token))throw Error('This invitation link is invalid.');sessionStorage.setItem(INVITE,token);history.replaceState(null,'',location.pathname+'#/overview');}
+      if(hash.has('invite') || hash.has('mobile-invite')){
+        const mobile = hash.has('mobile-invite');
+        const token = hash.get(mobile ? 'mobile-invite' : 'invite');
+        if(!/^[a-f0-9]{64}$/.test(token))throw Error('This invitation link is invalid.');
+        sessionStorage.setItem(INVITE,token);
+        sessionStorage.setItem(INVITE_METHOD,mobile ? 'mobile' : 'email');
+        history.replaceState(null,'',location.pathname+'#/overview');
+      }
       const emailLink=hash.get('confirm')||hash.get('recovery');
       if(emailLink){
         if(!/^[A-Za-z0-9_-]{32,128}$/.test(emailLink))throw Error('This email link is invalid.');
         emailCode=emailLink;history.replaceState(null,'',location.pathname+'#/overview');
         $('#signInForm').hidden=true;$('.auth-actions').hidden=true;$('#resetForm').hidden=false;$('#authTitle').textContent='Set a new password';$('#authDescription').textContent='Choose a password with at least 12 characters.';return;
       }
-      session=JSON.parse(sessionStorage.getItem(KEY)||localStorage.getItem(KEY)||'null');
       showInvitationControls();
+      if (mobileInvite()) return;
+      session=JSON.parse(sessionStorage.getItem(KEY)||localStorage.getItem(KEY)||'null');
       if(session)await enter();
     }catch(error){$('#authMessage').textContent=error.message;}
   }

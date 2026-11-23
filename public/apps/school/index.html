@@ -28,6 +28,14 @@
         <button id="createAccount" type="button" class="text" hidden>Create invited account</button>
         <button id="recover" type="button" class="text">Forgot password</button>
       </div>
+      <form id="mobileSignupForm" hidden>
+        <label>Invited mobile number<input id="invitedMobile" type="tel" autocomplete="tel" placeholder="e.g. +91 98765 43210" required maxlength="30"></label>
+        <label>New six-digit PIN<input id="newPin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6}" maxlength="6" required></label>
+        <label>Confirm PIN<input id="confirmPin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6}" maxlength="6" required></label>
+        <button class="primary" type="submit">Set PIN and open Parent Portal</button>
+      </form>
+      <button id="useExistingPin" type="button" class="text" hidden>Sign in with an existing PIN</button>
+      <button id="useNewPin" type="button" class="text" hidden>Create a mobile account</button>
       <form id="resetForm" hidden>
         <label>New password<input id="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
         <label>Confirm password<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
@@ -89,7 +97,7 @@
 
   <dialog id="resultDialog" aria-labelledby="resultTitle">
     <h2 id="resultTitle">Invitation ready</h2>
-    <p>Send this link directly to the person you invited. They have seven days to accept it with their invited email address.</p>
+    <p id="inviteInstructions"></p>
     <label>Invitation link<input id="inviteLink" readonly></label>
     <div class="dialog-actions">
       <button type="button" data-close>Done</button>
@@ -99,6 +107,6 @@
   </dialog>
   <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
   <script src="/config.js"></script>
-  <script src="/apps/school/school.js?v=workspace-2"></script>
+  <script src="/apps/school/school.js?v=mobile-invite-1"></script>
 </body>
 </html>

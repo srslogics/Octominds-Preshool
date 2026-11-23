@@ -1,6 +1,7 @@
 """Family portal records and scoped class communication."""
 from fastapi import HTTPException
 
+from ..auth import mobile_from_login
 from .access import forbidden, invalid
 from .db import now
 
@@ -50,7 +51,8 @@ def workspace(access):
         where p.is_active=1 and a.email_confirmed_at is not null and m.is_active=1 and m.role='parent'
         and (m.expires_at is null or julianday(m.expires_at)>julianday('now')) order by p.full_name""")
     return {'classes': classes, 'students': students, 'guardians': guardians,
-            'parent_accounts': [a for a in accounts if access.manage(a['branch_id'])]}
+            'parent_accounts': [{**a, 'phone': mobile_from_login(a['email'])}
+                                for a in accounts if access.manage(a['branch_id'])]}
 
 
 def save_student(access, p_data):

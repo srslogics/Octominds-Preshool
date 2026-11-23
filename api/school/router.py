@@ -5,9 +5,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from ..auth import CurrentUser, Role, bearer, get_current_user
+from ..auth import MOBILE_LOGIN_SUFFIX, CurrentUser, Role, bearer, get_current_user, normalize_mobile
 from ..config import Settings, get_settings
 from ..turso.repository import SchoolRepository
 
@@ -109,11 +109,26 @@ class SaveRecord(Fields):
 
 
 class Invitation(Fields):
-    email: str = Field(min_length=3, max_length=254, pattern=r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+    email: str | None = Field(None, min_length=3, max_length=254, pattern=r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+    phone: str | None = Field(None, max_length=30)
     full_name: str = Field(min_length=1, max_length=120)
     role: Role
     branch_id: UUID | None = None
     expires_at: datetime | None = None
+
+    @model_validator(mode='after')
+    def validate_recipient(self):
+        if (self.email is None) == (self.phone is None):
+            raise ValueError('Enter either an email address or a mobile number.')
+        if self.phone is not None:
+            if self.role != Role.PARENT:
+                raise ValueError('Mobile invitations are available for parents and guardians.')
+            self.phone = normalize_mobile(self.phone)
+            if self.phone is None:
+                raise ValueError('Enter a 10-digit Indian mobile number.')
+        if self.email and self.email.lower().endswith(MOBILE_LOGIN_SUFFIX):
+            raise ValueError('Use the mobile number option for this account.')
+        return self
 
 
 class Grant(Fields):
@@ -202,5 +217,5 @@ def access_command(action: str, body: dict, user: Annotated[CurrentUser, Depends
 @router.post('/accept-invitation')
 def accept_invitation(body: AcceptInvitation, repo: Annotated[SchoolRepository, Depends(repository)]):
     # Deliberately does not require a membership: invitees do not have one yet.
-    # The repository verifies the session, verified email, and invitation ownership.
+    # The repository verifies the session and matches the account to the invitation.
     return repo.request('POST', '/rpc/school_accept_invitation', data={'p_token': body.token})

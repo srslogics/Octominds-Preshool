@@ -1,4 +1,4 @@
-"""Password sign-in, rotating sessions and one-time email links."""
+"""Password sign-in, rotating sessions, and account setup links."""
 import logging
 import re
 import secrets
@@ -13,10 +13,12 @@ from argon2.exceptions import VerificationError, InvalidHashError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..auth import Credentials, resolve_account
+from ..auth import (MOBILE_LOGIN_SUFFIX, Credentials, Role, mobile_from_login,
+                    mobile_login, normalize_mobile, resolve_account)
 from ..config import Settings, get_settings
 from .access import Access, forbidden, invalid
 from .db import now, token_hash, transaction
+from .school import complete_invitation, valid_invitation
 
 router = APIRouter(prefix='/api/v1/auth', tags=['accounts'])
 Config = Annotated[Settings, Depends(get_settings)]
@@ -27,7 +29,7 @@ password_workers = BoundedSemaphore(4)
 
 
 def password_valid(email, password):
-    return (bool(re.fullmatch(r'[6-9][0-9]{9}@auth\.octominds\.invalid', email)) and
+    return (bool(mobile_from_login(email)) and
             bool(re.fullmatch(r'\d{6}', password))) or 12 <= len(password) <= 128
 
 
@@ -68,6 +70,12 @@ class EmailRequest(BaseModel):
 
 
 class Signup(EmailRequest):
+    invitation_token: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class MobileSignup(BaseModel):
+    phone: str = Field(max_length=30)
+    pin: str = Field(pattern=r'^[0-9]{6}$')
     invitation_token: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
@@ -180,15 +188,28 @@ def email_code(db, user_id, purpose):
     return code
 
 
-def valid_invitation(db, token, email):
-    invitation = db.one("""
-        select * from school_invitations where token_hash=? and lower(email)=? and revoked_at is null
-        and accepted_at is null and julianday(expires_at)>julianday('now')
-        and (membership_expires_at is null or julianday(membership_expires_at)>julianday('now'))
-        """, (token_hash(token), email))
-    if not invitation or not Access(db, invitation['created_by']).may_grant(invitation['role'], invitation['branch_id']):
-        forbidden('This invitation is invalid or has expired.')
-    return invitation
+@router.post('/claim-mobile-invitation')
+def claim_mobile_invitation(body: MobileSignup, settings: Config):
+    phone = normalize_mobile(body.phone)
+    if not phone:
+        invalid('Enter a 10-digit Indian mobile number.')
+    login = mobile_login(phone)
+    if not password_workers.acquire(blocking=False):
+        raise HTTPException(429, 'Account setup is busy. Please try again in a moment.')
+    try:
+        with transaction(settings, write=True) as db:
+            invitation = valid_invitation(db, body.invitation_token, login)
+            if invitation['role'] != Role.PARENT:
+                forbidden('This invitation is invalid or has expired.')
+            if db.scalar('select 1 from accounts where email=?', (login,)):
+                raise HTTPException(409, 'This number already has an account. Choose “Sign in with an existing PIN” to accept.')
+            account = db.insert('accounts', {'email': login, 'password_hash': hasher.hash(body.pin),
+                                             'email_confirmed_at': now()})
+            db.insert('profiles', {'id': account['id'], 'full_name': invitation['full_name'], 'phone': phone})
+            complete_invitation(Access(db, account['id']), invitation)
+            return issue_session(db, account['id'])
+    finally:
+        password_workers.release()
 
 
 @router.post('/signup')
@@ -196,6 +217,8 @@ def signup(body: Signup, settings: Config):
     if not email_enabled(settings):
         raise HTTPException(503, 'Account email has not been configured. Contact your school.')
     email = body.email.strip().lower()
+    if email.endswith(MOBILE_LOGIN_SUFFIX):
+        invalid('Open your mobile invitation and set up your PIN.')
     with transaction(settings, write=True) as db:
         invitation = valid_invitation(db, body.invitation_token, email)
         account = db.one('select * from accounts where email=?', (email,))
@@ -216,6 +239,8 @@ def recover(body: EmailRequest, settings: Config):
     if not email_enabled(settings):
         raise HTTPException(503, 'Account email has not been configured. Contact your school.')
     email = body.email.strip().lower()
+    if email.endswith(MOBILE_LOGIN_SUFFIX):
+        return {}
     with transaction(settings, write=True) as db:
         account = db.one("""select a.id from accounts a join profiles p on p.id=a.id
             where email=? and email_confirmed_at is not null and p.is_active=1""", (email,))

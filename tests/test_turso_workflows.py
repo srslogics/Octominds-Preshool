@@ -164,6 +164,59 @@ class TursoWorkflows(unittest.TestCase):
         self.request('POST','/auth/logout',refreshed,code=204)
         self.request('GET','/session',refreshed,code=401)
 
+    def test_mobile_parent_invitation_and_child_link(self):
+        invite = '/school/access/invite'
+        claim = '/auth/claim-mobile-invitation'
+        details = {'branch_id': self.center, 'role': 'parent', 'full_name': 'Mobile Parent'}
+        self.request('POST', invite, self.owner, {**details, 'phone': '+1 98765 43210'}, code=422)
+        self.request('POST', invite, self.owner, {**details, 'role': 'teacher', 'phone': '9876543210'}, code=422)
+        self.request('POST', invite, self.owner, {**details, 'phone': '9876543210', 'email': 'parent@example.invalid'}, code=422)
+        self.request('POST', invite, self.owner, {**details, 'email': '9876543210@auth.octominds.invalid'}, code=422)
+        self.request('POST', invite, self.teacher, {**details, 'phone': '9876543210'}, code=403)
+        invitation = self.request('POST', invite, self.owner, {**details, 'phone': '+91 98765 43210'}).json()
+        revocable = self.request('POST', invite, self.owner, {**details, 'phone': '9123456780'}).json()
+        self.request('POST', '/school/access/revoke_invite', self.owner, {'id': revocable['id']})
+        self.request('POST', claim, data={'phone': '9123456780', 'pin': '539176',
+                     'invitation_token': revocable['token']}, code=403)
+        signup = {'phone': '9876543210', 'pin': '539176', 'invitation_token': invitation['token']}
+        self.request('POST', claim, data={**signup, 'phone': '9876543211'}, code=403)
+        self.request('POST', claim, data={**signup, 'pin': '1234'}, code=422)
+        with patch('api.turso.accounts.email_enabled', return_value=False):
+            parent = self.request('POST', claim, data=signup).json()
+        self.request('POST', claim, data=signup, code=403)
+        parent_info = self.request('GET', '/session', parent).json()
+        self.assertEqual((parent_info['role'], parent_info['phone']), ('parent', '9876543210'))
+        self.assertEqual(self.request('GET', '/parents/workspace', parent).json()['students'], [])
+        directory = self.request('GET', '/school/access', self.owner).json()
+        self.assertEqual(next(i for i in directory['invitations'] if i['id'] == invitation['id'])['phone'], '9876543210')
+        candidates = self.request('GET', '/parents/workspace', self.owner).json()['parent_accounts']
+        self.assertEqual(next(a for a in candidates if a['user_id'] == parent_info['id'])['phone'], '9876543210')
+        self.request('POST', '/parents/guardians', self.owner, {**self.guardian, 'user_id': parent_info['id']})
+        login = {'email': '9876543210@auth.octominds.invalid', 'password': signup['pin']}
+        refreshed = self.request('POST', '/auth/token?grant_type=password', data=login).json()
+        children = self.request('GET', '/parents/workspace', refreshed).json()['students']
+        self.assertEqual([child['id'] for child in children], [self.child])
+
+    def test_existing_number_accepts_an_invitation_with_its_current_pin(self):
+        email = '9123456780@auth.octominds.invalid'
+        user_id = self.account(email, 'parent', self.center)
+        with transaction(self.settings, write=True) as db:
+            db.update('accounts', user_id, {'password_hash': hasher.hash('539176')})
+        invite = {'phone': '9123456780', 'full_name': 'Different Name', 'role': 'parent'}
+        session = self.request('POST', '/auth/token?grant_type=password',
+                               data={'email': email, 'password': '539176'}).json()
+        for branch in (self.other_center, self.center):
+            invitation = self.request('POST', '/school/access/invite', self.owner,
+                                      {**invite, 'branch_id': branch}).json()
+            self.request('POST', '/auth/claim-mobile-invitation',
+                         data={'phone': invite['phone'], 'pin': '654321', 'invitation_token': invitation['token']},
+                         code=409)
+            self.request('POST', '/school/accept-invitation', session, {'token': invitation['token']})
+        self.request('POST', '/auth/token?grant_type=password', data={'email': email, 'password': '539176'})
+        profile = self.request('GET', '/session', session).json()
+        self.assertEqual(profile['full_name'], '9123456780')
+        self.assertEqual(set(profile['branch_roles']), {self.center, self.other_center})
+
     def test_readiness_config_and_distinct_center_permissions(self):
         response=self.client.get('/ready')
         self.assertEqual(response.status_code,200)

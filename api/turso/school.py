@@ -5,8 +5,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException
 
+from ..auth import mobile_from_login, mobile_login
 from .access import GLOBAL, Access, forbidden, invalid
-from .accounts import valid_invitation
 from .db import now, token_hash
 
 TABLES = {'school': 'school_settings', 'centers': 'branches', 'years': 'academic_years',
@@ -122,6 +122,8 @@ def directory(access):
     audit = [a for a in db.all("""select id,actor_user_id,branch_id,event_type,entity_type,entity_id,occurred_at
               from audit_events where event_type like 'school.%' order by occurred_at desc,id desc""")
              if access.manage(a['branch_id'])][:100]
+    for record in users + invitations:
+        record['phone'] = mobile_from_login(record['email'])
     return {'memberships': memberships, 'users': users, 'invitations': invitations, 'audit': audit}
 
 
@@ -149,7 +151,9 @@ def access_command(access, p_action, p_data):
         if not access.may_grant(role, branch):
             forbidden('You cannot assign this role or center.')
         token = secrets.token_hex(32)
-        row = db.insert('school_invitations', {'email': p_data['email'].lower(), 'full_name': p_data['full_name'],
+        phone = p_data.get('phone')
+        login = mobile_login(phone) if phone else p_data['email'].lower()
+        row = db.insert('school_invitations', {'email': login, 'full_name': p_data['full_name'],
             'branch_id': branch, 'role': role, 'token_hash': token_hash(token), 'created_by': access.actor,
             'expires_at': (datetime.now(UTC)+timedelta(days=7)).isoformat(),
             'membership_expires_at': expiry_value(p_data.get('expires_at'), role)})
@@ -204,13 +208,33 @@ def access_command(access, p_action, p_data):
     return result
 
 
+def valid_invitation(db, token, login):
+    invitation = db.one("""
+        select * from school_invitations where token_hash=? and lower(email)=? and revoked_at is null
+        and accepted_at is null and julianday(expires_at)>julianday('now')
+        and (membership_expires_at is null or julianday(membership_expires_at)>julianday('now'))
+        """, (token_hash(token), login))
+    if not invitation or not Access(db, invitation['created_by']).may_grant(invitation['role'], invitation['branch_id']):
+        forbidden('This invitation is invalid or has expired.')
+    return invitation
+
+
+def complete_invitation(access, invitation):
+    db = access.db
+    mobile = mobile_from_login(invitation['email'])
+    role, branch = invitation['role'], invitation['branch_id']
+    membership = next((m for m in access.memberships if m['role'] == role and m['branch_id'] == branch), None) if mobile else None
+    if membership is None:
+        membership = db.insert('user_memberships', {'user_id': access.actor, 'role': role,
+            'branch_id': branch, 'expires_at': invitation['membership_expires_at']})
+    if not mobile:
+        db.update('profiles', access.actor, {'full_name': invitation['full_name'], 'updated_at': now()})
+    db.update('school_invitations', invitation['id'], {'accepted_by': access.actor, 'accepted_at': now()})
+    access.audit('school.invitation_accepted', 'membership', membership['id'], branch)
+    return {'id': membership['id']}
+
+
 def accept_invitation(access, p_token):
     db = access.db
-    email = db.scalar('select email from accounts where id=? and email_confirmed_at is not null', (access.actor,))
-    invitation = valid_invitation(db, p_token, email)
-    membership = db.insert('user_memberships', {'user_id': access.actor, 'role': invitation['role'],
-        'branch_id': invitation['branch_id'], 'expires_at': invitation['membership_expires_at']})
-    db.update('profiles', access.actor, {'full_name': invitation['full_name'], 'updated_at': now()})
-    db.update('school_invitations', invitation['id'], {'accepted_by': access.actor, 'accepted_at': now()})
-    access.audit('school.invitation_accepted', 'membership', membership['id'], invitation['branch_id'])
-    return {'id': membership['id']}
+    login = db.scalar('select email from accounts where id=? and email_confirmed_at is not null', (access.actor,))
+    return complete_invitation(access, valid_invitation(db, p_token, login))

@@ -8,8 +8,21 @@ await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await cp(resolve(root, "public"), dist, { recursive: true });
 
-const html = await readFile(resolve(dist, "index.html"), "utf8");
-for (const marker of ["OctoMinds Inventory", "loginForm", "inventoryPage"]) {
-  if (!html.includes(marker)) throw new Error(`Missing required marker: ${marker}`);
+const pages = [
+  ["inventory", ["index.html"], ["OctoMinds Inventory", "loginForm", "inventoryPage"]],
+  ["school", ["school/index.html", "school.html"], ["signInForm"]],
+  ["parents", ["parents/index.html", "parents.html"], ["childSelect"]],
+];
+for (const [app, locations, markers] of pages) {
+  const entry = resolve(dist, "apps", app, "index.html");
+  const html = await readFile(entry, "utf8");
+  for (const marker of markers) {
+    if (!html.includes(marker)) throw new Error(`${app}: missing required marker ${marker}`);
+  }
+  for (const location of locations) {
+    const destination = resolve(dist, location);
+    await mkdir(resolve(destination, ".."), { recursive: true });
+    await cp(entry, destination);
+  }
 }
-console.log("OctoMinds Inventory static assets created in dist/");
+console.log("OctoMinds Inventory, School, and Parent Portal built in dist/");

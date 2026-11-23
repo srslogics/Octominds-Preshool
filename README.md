@@ -12,6 +12,15 @@ The first parent portal is available at `/parents`. Explore `/parents?preview=1`
 
 Linked families can switch children, read class notices, home learning and diary notes, view dated events and school holidays, and message the assigned school team. Administrators register children and link accepted parent accounts from the School desk. Assigned teachers publish updates and private photo albums for their current classes. See [parent portal setup and release notes](docs/parent-portal.md) before enabling live use.
 
+## App folders
+
+| App | URL | Frontend | API |
+| --- | --- | --- | --- |
+| Inventory | `/` | `public/apps/inventory/` | `api/inventory/` |
+| School Administration | `/school` | `public/apps/school/` | `api/school/` |
+| Parent Portal | `/parents` | `public/apps/parents/` | `api/parents/` |
+
+One FastAPI service serves the three apps. They share branding assets, account sessions, and the Turso database. Run the static preview with `npm run dev`, or use FastAPI for sign-in and other database features.
 
 ## Workspace screens
 

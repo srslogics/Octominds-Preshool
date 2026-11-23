@@ -6,10 +6,10 @@
     "node": ">=18.20.0"
   },
   "scripts": {
-    "dev": "python3 -m http.server 4173 --directory public",
+    "dev": "npm run build && python3 -m http.server 4173 --directory dist",
     "build": "node scripts/build-static.mjs",
-    "start": "python3 -m http.server 4173 --directory public",
-    "test": "npm run build && node --check public/app.js && node --check public/pages.js && node --check public/school.js && node --check public/sw.js && node --check public/parents.js && node --check public/parents-preview.js && node --check public/parents-gallery.js && node --check public/parents-gallery-preview.js && node --test tests/*.test.mjs",
+    "start": "npm run build && python3 -m http.server 4173 --directory dist",
+    "test": "npm run build && node --check public/apps/inventory/app.js && node --check public/apps/inventory/pages.js && node --check public/apps/school/school.js && node --check public/sw.js && node --check public/apps/parents/parents.js && node --check public/apps/parents/parents-preview.js && node --check public/apps/parents/parents-gallery.js && node --check public/apps/parents/parents-gallery-preview.js && node --test tests/*.test.mjs",
     "test:parents": "node tests/parents-browser.cjs",
     "test:gallery": "node tests/gallery-browser.cjs"
   },

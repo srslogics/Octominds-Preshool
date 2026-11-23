@@ -10,9 +10,9 @@ async function source(path) {
 
 test("inventory workspace contains the production workflows", async () => {
   const [html, javascript, css] = await Promise.all([
-    source("public/index.html"),
-    source("public/app.js"),
-    source("public/workspace.css"),
+    source("public/apps/inventory/index.html"),
+    source("public/apps/inventory/app.js"),
+    source("public/apps/inventory/workspace.css"),
   ]);
 
   for (const marker of [
@@ -94,7 +94,7 @@ test("center onboarding is protected and available inside inventory", async () =
   const [sql, router, html] = await Promise.all([
     source("supabase/migrations/202609010001_inventory_center_setup.sql"),
     source("api/inventory/router.py"),
-    source("public/index.html"),
+    source("public/apps/inventory/index.html"),
   ]);
   assert.match(sql, /create_inventory_center/i);
   assert.match(sql, /security definer/i);
@@ -128,7 +128,7 @@ test("inventory API exposes versioned endpoints behind current-user access", asy
 
 test("service worker never caches authenticated API data", async () => {
   const serviceWorker = await source("public/sw.js");
-  assert.match(serviceWorker, /octominds-turso-v1/);
+  assert.match(serviceWorker, /octominds-apps-v1/);
   assert.match(serviceWorker, /skipWaiting/);
   assert.match(serviceWorker, /clients\.claim/);
   assert.match(serviceWorker, /pathname\.startsWith\('\/api\/'\)/);
@@ -138,9 +138,9 @@ test("service worker never caches authenticated API data", async () => {
 
 test("official OctoMinds branding is used across web and PWA surfaces", async () => {
   const [html, manifest, css, horizontalLogo, icon192, icon512] = await Promise.all([
-    source("public/index.html"),
+    source("public/apps/inventory/index.html"),
     source("public/manifest.webmanifest"),
-    source("public/workspace.css"),
+    source("public/apps/inventory/workspace.css"),
     stat(new URL("public/assets/octominds-logo-horizontal.png", root)),
     stat(new URL("public/assets/octominds-icon-192.png", root)),
     stat(new URL("public/assets/octominds-icon-512.png", root)),

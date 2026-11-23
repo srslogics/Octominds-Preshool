@@ -116,23 +116,40 @@ def frontend_config(config: Annotated[Settings, Depends(get_settings)]) -> Respo
     )
 
 
-# Public HTML documents have extensionless canonical URLs. Legacy links redirect
-# without dropping query parameters; browsers retain fragments across redirects.
 frontend_directory = Path(__file__).resolve().parents[1] / "public"
-html_pages = {}
-legacy_pages = {}
-for document in frontend_directory.rglob("*.html"):
-    relative = document.relative_to(frontend_directory).as_posix()
-    clean = "/" + relative.removesuffix(".html")
-    if document.name == "index.html":
-        canonical = clean.removesuffix("index").rstrip("/") or "/"
-        legacy_pages[clean] = canonical
-    else:
-        canonical = clean
-    html_pages[canonical] = document
-    legacy_pages["/" + relative] = canonical
-    if canonical != "/":
-        legacy_pages[canonical + "/"] = canonical
+
+# Public routes are independent of where each app's files live on disk.
+app_urls = {"inventory": "/", "school": "/school", "parents": "/parents"}
+html_pages = {
+    url: frontend_directory / "apps" / app_name / "index.html"
+    for app_name, url in app_urls.items()
+}
+legacy_pages = {
+    "/index": "/",
+    "/index.html": "/",
+    "/inventory": "/",
+    "/inventory/": "/",
+    "/school/": "/school",
+    "/school.html": "/school",
+    "/parents/": "/parents",
+    "/parents.html": "/parents",
+}
+for app_name, url in app_urls.items():
+    app_path = f"/apps/{app_name}"
+    for suffix in ("", "/", "/index.html"):
+        legacy_pages[app_path + suffix] = url
+
+# Older cached app pages may still request the original asset URLs.
+legacy_assets = {
+    "inventory": ("app.js", "pages.js", "operations.css", "premium.css",
+                  "routes.css", "styles.css", "workspace.css"),
+    "school": ("school.css", "school.js"),
+    "parents": ("parents.css", "parents.js", "parents-preview.js",
+                "parents-gallery.js", "parents-gallery-preview.js"),
+}
+for app_name, filenames in legacy_assets.items():
+    for filename in filenames:
+        legacy_pages[f"/{filename}"] = f"/apps/{app_name}/{filename}"
 
 
 @app.middleware("http")

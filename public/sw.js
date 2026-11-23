@@ -1,5 +1,5 @@
-const CACHE = 'octominds-turso-v1';
-const SHELL = ['/parents', '/parents.css?v=3', '/parents.js?v=3', '/parents-gallery.js?v=2', '/parents-gallery-preview.js?v=1', '/parents-preview.js?v=2', '/', '/school', '/school.css?v=clean-urls-1', '/school.js?v=turso-1', '/workspace.css?v=inventory-10', '/operations.css?v=inventory-12', '/routes.css?v=inventory-14', '/premium.css?v=inventory-16', '/app.js?v=turso-1', '/pages.js?v=clean-urls-1', '/manifest.webmanifest'];
+const CACHE = 'octominds-apps-v1';
+const SHELL = ['/parents', '/apps/parents/parents.css?v=3', '/apps/parents/parents.js?v=3', '/apps/parents/parents-gallery.js?v=2', '/apps/parents/parents-gallery-preview.js?v=1', '/apps/parents/parents-preview.js?v=2', '/', '/school', '/apps/school/school.css?v=clean-urls-1', '/apps/school/school.js?v=turso-1', '/apps/inventory/workspace.css?v=inventory-10', '/apps/inventory/operations.css?v=inventory-12', '/apps/inventory/routes.css?v=inventory-14', '/apps/inventory/premium.css?v=inventory-16', '/apps/inventory/app.js?v=turso-1', '/apps/inventory/pages.js?v=clean-urls-1', '/manifest.webmanifest'];
 self.addEventListener('install', (event) => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   await cache.addAll(SHELL);

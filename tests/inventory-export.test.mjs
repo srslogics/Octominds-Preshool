@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 
-const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../public/apps/inventory/app.js', import.meta.url), 'utf8');
 const functions = source.slice(source.indexOf('function csvCell('), source.indexOf('let inventorySearchTimer;'));
 function fixture() {
   const calls = [], downloads = [], messages = [];

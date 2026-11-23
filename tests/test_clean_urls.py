@@ -21,3 +21,20 @@ class CleanPageURLs(unittest.TestCase):
             self.assertEqual(client.get('/unknown.html').status_code,404)
             self.assertEqual(client.get('/api/v1/school/workspace').status_code,401)
             self.assertEqual(client.get('/school.js').status_code,200)
+
+    def test_public_pages_load_their_own_app_assets(self):
+        with TestClient(app) as client:
+            for url, app_name, script in [
+                ('/', 'inventory', 'app.js'),
+                ('/school', 'school', 'school.js'),
+                ('/parents', 'parents', 'parents.js'),
+            ]:
+                with self.subTest(app=app_name):
+                    path = f'/apps/{app_name}/{script}'
+                    self.assertIn(path, client.get(url).text)
+                    self.assertEqual(client.get(path).status_code, 200)
+                    legacy = client.get(f'/{script}?v=old', follow_redirects=False)
+                    self.assertEqual(legacy.status_code, 308)
+                    self.assertEqual(legacy.headers['location'], path + '?v=old')
+                    self.assertEqual(client.get(f'/apps/{app_name}/index.html',
+                                                follow_redirects=False).headers['location'], url)

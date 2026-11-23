@@ -261,7 +261,7 @@
     }
     if (accessSection === 'invitations') {
       const body=access.invitations.filter(inScope).map(i=>[
-        `${esc(i.full_name)}<small>${esc(contact(i))}</small>`,
+        `${esc(i.full_name)}<small>${esc(contact(i))}</small>${i.student_name ? `<small>Student: ${esc(i.student_name)}</small>` : ''}`,
         esc(labels[i.role]),
         state(i.accepted_at?'accepted':i.revoked_at?'revoked':Date.parse(i.expires_at)<Date.now()?'expired':'pending'),
         !i.accepted_at&&!i.revoked_at&&mayGrant(i.role)?button('Revoke invitation','revoke_invite',i.id):'',
@@ -283,6 +283,11 @@
   }
   const text=(key,label,type='text',required=true)=>({key,label,type,required});
   const select=(key,label,options,placeholder='')=>({key,label,type:'select',options,required:true,placeholder});
+  const signInMethods = [['mobile','Mobile number'],['email','Email address']];
+  const enrollmentOptions = () => rows('students').map(student => {
+    const classroom = data.classes.find(record => record.id === student.class_id);
+    return [student.id, [student.full_name, classroom && className(classroom), student.guardian?.full_name].filter(Boolean).join(' · ')];
+  });
   const options=kind=>rows(kind).filter(r=>r.status!=='closed'&&r.is_active!==false&&(kind!=='classes'||!data.years.some(y=>y.id===r.academic_year_id&&y.status==='closed'))).map(r=>[r.id,r.name]);
   const mayGrant=role=>user.role==='super_admin'||(globalAdmin()&&!['super_admin','management'].includes(role))||(!globalAdmin()&&['teacher','parent','accountant','admission_counsellor'].includes(role));
   const teachers = () => (access?.users || []).filter(account => account.is_active && access.memberships.some(m =>
@@ -308,6 +313,10 @@
     const active=[['true','Active'],['false','Archived']];
     const dates=[text('starts_on','Start date','date'),text('ends_on','End date','date')];
     const roles=Object.entries(labels).filter(([role]) => mayGrant(role) && (workingCenter()?.is_active || ['super_admin','management'].includes(role)));
+    const familyFields = [
+      {...select('student_id','Student',enrollmentOptions(),'Choose a student (optional)'),required:false},
+      text('relationship','Relationship','text',false),
+    ];
     const fields={
       school:[text('name','School name'),text('email','Contact email','email',false),text('phone','Phone','tel',false),text('address','Address','textarea',false),text('website','Website','url',false)],
       centers:[text('name','Center name'),text('code','Center code'),text('email','Contact email','email',false),text('phone','Phone','tel',false),text('address','Address','textarea',false),text('timezone','Timezone'),text('opens_at','Opens at','time',false),text('closes_at','Closes at','time',false),{key:'working_days',label:'Working days',type:'days'},text('capacity','Center capacity','number',false),...(globalAdmin()?[select('is_active','Status',active)]:[])],
@@ -315,26 +324,60 @@
       terms:[text('name','Term name'),select('academic_year_id','Academic year',options('years')),...dates],
       programs:[text('name','Program name'),text('description','Description','textarea',false),select('is_active','Status',active)],
       classes:[text('name','Class name'),text('section','Section','text',false),select('academic_year_id','Academic year',options('years')),select('program_id','Program',options('programs')),text('room','Room','text',false),text('capacity','Capacity','number'),select('is_active','Status',active)],
-      student:[text('full_name','Student’s full name')],
+      student:[text('full_name','Student’s full name'),{type:'guardian-heading'},
+        text('guardian_name','Parent or guardian name','text',false),
+        select('method','Parent sign-in method',signInMethods),
+        text('phone','Mobile number','tel',false),text('email','Email address','email',false),
+        text('relationship','Relationship','text',false)],
       assignments:[select('class_id','Class',options('classes')),select('user_id','Teacher',teachers()),text('starts_on','Start date','date'),text('ends_on','End date for temporary cover','date',false),select('is_active','Status',active)],
       holidays:[text('name','Holiday name'),...dates,select('is_active','Status',active)],
-      invite:[text('full_name','Full name'),select('role','Role',roles,'Choose a role'),
-        select('method','Sign-in method',[['email','Email address'],['mobile','Mobile number']]),
+      invite:[select('role','Role',roles,'Choose a role'),...familyFields,text('full_name','Full name'),
+        select('method','Sign-in method',signInMethods),
         text('email','Email address','email'),text('phone','Mobile number','tel'),
         text('expires_at','Access expiry (optional)','datetime-local',false)],
-      grant:[select('user_id','Account',(access?.users||[]).filter(u=>u.is_active&&u.id!==user.id).map(u=>[u.id,`${u.full_name} (${contact(u)})`]),'Choose an account'),select('role','Role',roles,'Choose a role'),text('expires_at','Access expiry (optional)','datetime-local',false)],
+      grant:[select('role','Role',roles,'Choose a role'),...familyFields,
+        select('user_id','Account',(access?.users||[]).filter(u=>u.is_active&&u.id!==user.id).map(u=>[u.id,`${u.full_name} (${contact(u)})`]),'Choose an account'),
+        text('expires_at','Access expiry (optional)','datetime-local',false)],
       password:[text('current_password','Current password or PIN','password'),text('password','New password or PIN','password'),text('confirm','Confirm password or PIN','password')]
     };return fields[kind]||[];
   }
-  function updateInviteFields(roleChanged = false) {
+  function toggleField(field, visible, required = visible) {
+    field.closest('.form-field').hidden = !visible;
+    field.disabled = !visible;
+    field.required = required && visible;
+  }
+  function updateContactFields(isEnrollment = false) {
+    const mobile = $('#field-method').value === 'mobile';
+    toggleField($('#field-email'), !mobile, !isEnrollment);
+    toggleField($('#field-phone'), mobile, !isEnrollment);
+  }
+  function updateAccessFields(kind, changed = '') {
     const parent = $('#field-role').value === 'parent';
-    const method = $('#field-method');
-    if (roleChanged) method.value = parent ? 'mobile' : 'email';
-    const mobile = parent && method.value === 'mobile';
-    for (const [field, visible] of [[method, parent], [$('#field-email'), !mobile], [$('#field-phone'), mobile]]) {
-      field.closest('.form-field').hidden = !visible;
-      field.disabled = !visible;
-      field.required = visible;
+    const studentField = $('#field-student_id');
+    const droppedStudent = !parent && Boolean(studentField.value);
+    if (!parent) studentField.value = '';
+    const guardian = rows('students').find(student => student.id === studentField.value)?.guardian;
+    toggleField(studentField, parent, false);
+    toggleField($('#field-relationship'), parent && Boolean(studentField.value));
+    if (changed === 'student_id' || droppedStudent) {
+      $('#field-relationship').value = guardian?.relationship || '';
+      if (kind === 'invite') {
+        $('#field-method').value = guardian?.email ? 'email' : 'mobile';
+        $('#field-full_name').value = guardian?.full_name || '';
+        $('#field-phone').value = guardian?.phone || '';
+        $('#field-email').value = guardian?.email || '';
+      }
+      if (kind === 'grant') {
+        const account = guardian && access.users.find(person => person.id !== user.id && person.is_active &&
+          (guardian.phone ? person.phone === guardian.phone : person.email === guardian.email));
+        $('#field-user_id').value = account?.id || '';
+      }
+    }
+    if (kind === 'invite') {
+      const method = $('#field-method');
+      if (!parent || changed === 'role') method.value = parent ? 'mobile' : 'email';
+      toggleField(method, parent);
+      updateContactFields();
     }
   }
   function openEditor(kind,id){
@@ -350,6 +393,9 @@
       : ['invite','grant'].includes(kind)?(center?.is_active?`Working center: ${center.name}. Owner and management roles apply across all centers.`:'Only school-wide roles are available until you select an active center.'):kind==='years'?'Closing a year makes it read only. Close the current year before activating another.':kind==='assignments'?'The dates determine when the teacher gets access to this class.':kind==='centers'?'Opening hours use the center’s local time.':'';
     $('#formError').textContent='';
     $('#fields').innerHTML=definition(kind).map(f=>{
+      if (f.type==='guardian-heading') {
+        return '<div class="wide enrollment-heading"><h3>Parent or guardian details <small>(optional)</small></h3><p>Saved details fill in the parent invitation in People and access.</p></div>';
+      }
       let value=row[f.key]??({timezone:'Asia/Kolkata',working_days:[1,2,3,4,5],is_active:true,status:'planned',section:''}[f.key]??'');
       if(f.type==='time')value=String(value).slice(0,5);
       const fieldId = `field-${f.key}`;
@@ -360,30 +406,40 @@
       else control=`<input id="${fieldId}" name="${f.key}" type="${f.type}" value="${esc(value)}" ${f.required?'required':''} ${f.type==='number'?'min="0" max="100000" step="1"':''} ${f.type==='password'?'autocomplete="new-password" minlength="6"':'maxlength="500"'}>`;
       return `<div class="form-field${f.type==='textarea'?' wide':''}"><label for="${fieldId}">${esc(f.label)}</label>${control}</div>`;
     }).join('');
-    if (kind === 'invite') {
+    if (['invite','student'].includes(kind)) {
       const phone = $('#field-phone');
       phone.maxLength = 30;
       phone.autocomplete = 'tel';
       phone.placeholder = 'e.g. +91 98765 43210';
-      updateInviteFields();
     }
+    if (['invite','grant'].includes(kind)) updateAccessFields(kind);
     if (classroom) {
       const name = $('#field-full_name');
       name.maxLength = 120;
       name.closest('.form-field').classList.add('wide');
       name.autofocus = true;
+      $('#field-guardian_name').maxLength = 120;
+      updateContactFields(true);
+    }
+    if ($('#field-relationship')) {
+      $('#field-relationship').maxLength = 40;
+      $('#field-relationship').placeholder = 'e.g. Mother, Father, Guardian';
     }
     $('#editor').showModal();
   }
   $('#editorForm').addEventListener('change', event => {
-    if (editing?.kind !== 'invite') return;
-    if (['role', 'method'].includes(event.target.name)) updateInviteFields(event.target.name === 'role');
+    const field = event.target.name;
+    if (['invite','grant'].includes(editing?.kind) && ['role','method','student_id'].includes(field)) {
+      updateAccessFields(editing.kind, field);
+    }
+    if (editing?.kind==='student' && field==='method') updateContactFields(true);
   });
   $('#editorForm').addEventListener('submit',async event=>{
     event.preventDefault();const context=editing;const button=event.submitter;button.disabled=true;$('#formError').textContent='';
     try{
       const form = new FormData(event.currentTarget);
       const values={};for(const f of definition(context.kind)){
+        if (!f.key) continue;
         let value=form.get(f.key);
         if(f.type==='number')value=value===''?null:Number(value);
         else if(f.key==='is_active')value=value==='true';
@@ -396,12 +452,25 @@
       if (context.classroom) {
         const studentName = values.full_name?.trim();
         if (!studentName) throw Error('Enter the student’s full name.');
+        const guardianName = values.guardian_name?.trim();
+        const recipient = (values.phone || values.email)?.trim();
+        const relationship = values.relationship?.trim();
+        const hasGuardian = Boolean(guardianName || recipient || relationship);
+        if (hasGuardian && !(guardianName && recipient && relationship)) {
+          throw Error('Enter the parent’s name, contact and relationship, or leave the parent details blank.');
+        }
+        if (hasGuardian && values.method === 'mobile' && !/^(?:\+?91)?[6-9]\d{9}$/.test(recipient.replace(/[\s()-]/g, ''))) {
+          throw Error('Enter a 10-digit Indian mobile number for the parent.');
+        }
         await api('/parents/students', {
           full_name: studentName,
           branch_id: context.classroom.branch_id,
           class_id: context.classroom.id,
+          ...(hasGuardian ? {guardian: {full_name: guardianName, relationship,
+            [values.method === 'mobile' ? 'phone' : 'email']: recipient}} : {}),
         });
         $('#editor').close();
+        await load();
         notify(`${studentName} was added to ${className(context.classroom)}.`);
         return;
       }
@@ -425,12 +494,15 @@
         if(context.kind==='invite'){
           const fragment = inviteByMobile ? 'mobile-invite' : 'invite';
           $('#copyStatus').textContent='';
-          $('#inviteInstructions').textContent = inviteByMobile
+          const instructions = inviteByMobile
             ? 'Send this link directly to the invited mobile number. The parent has seven days to set up a PIN or accept with their existing PIN.'
             : 'Send this link directly to the person you invited. They have seven days to accept it with their invited email address.';
+          $('#inviteInstructions').textContent = values.student_id
+            ? `${instructions} The parent will be linked to the student when they accept.`
+            : instructions;
           $('#inviteLink').value=`${location.origin}/school#${fragment}=${result.token}`;
           $('#resultDialog').showModal();
-        }else notify('Account access assigned.');return;
+        }else notify(values.student_id ? 'Parent connected to the student.' : 'Account access assigned.');return;
       }
       if(!['school','centers'].includes(context.kind))values.branch_id=context.branch;
       if(context.row.id&&context.kind==='years'&&values.status==='closed'&&!window.confirm('Close this academic year? Its setup will become read only.'))return;

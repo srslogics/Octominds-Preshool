@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import Field, model_validator
 
 from ..auth import CurrentUser, get_current_user
-from ..school.router import Fields, SchoolRepository, repository
+from ..school.router import EnrollmentGuardian, Fields, SchoolRepository, repository
 
 router = APIRouter(prefix='/api/v1/parents', tags=['parents'])
 User = Annotated[CurrentUser, Depends(get_current_user)]
@@ -21,6 +21,7 @@ class Student(Fields):
     is_active: bool = True
     id: UUID | None = None
     version: int | None = Field(None, ge=1)
+    guardian: EnrollmentGuardian | None = None
 
     @model_validator(mode='after')
     def edit_version(self):

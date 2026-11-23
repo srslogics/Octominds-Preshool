@@ -1,7 +1,7 @@
 """Family portal records and scoped class communication."""
 from fastapi import HTTPException
 
-from ..auth import mobile_from_login
+from ..auth import mobile_from_login, mobile_login
 from .access import forbidden, invalid
 from .db import now
 
@@ -55,9 +55,52 @@ def workspace(access):
                                 for a in accounts if access.manage(a['branch_id'])]}
 
 
+def enrollment_students(access):
+    branches = [branch for branch in access.managed_branches if access.active(branch)]
+    if not branches:
+        return []
+    placeholders = ','.join('?' for _ in branches)
+    students = access.db.all(f"""
+        select s.id, s.full_name, s.branch_id, s.class_id,
+               g.full_name guardian_name, g.login guardian_login, g.relationship
+        from parent_students s join school_classes c on c.id=s.class_id
+        join academic_years y on y.id=c.academic_year_id
+        left join student_guardian_contacts g on g.student_id=s.id
+        where s.branch_id in ({placeholders}) and s.is_active=1 and c.is_active=1 and y.status<>'closed'
+        order by s.full_name, s.id
+        """, branches)
+    for student in students:
+        login = student.pop('guardian_login')
+        name = student.pop('guardian_name')
+        relationship = student.pop('relationship')
+        phone = mobile_from_login(login) if login else None
+        student['guardian'] = ({'full_name': name, 'phone': phone, 'email': None if phone else login,
+                                'relationship': relationship} if login else None)
+    return students
+
+
+def require_enrollment_student(access, student_id, branch):
+    child = access.db.one('select * from parent_students where id=? and branch_id=? and is_active=1',
+                          (student_id, branch))
+    if not access.manage(branch) or not child or not access.class_open(child['class_id']):
+        invalid('Choose an active student in this center.')
+    return child
+
+
+def save_guardian_contact(db, student_id, guardian, *, replace=False):
+    phone = guardian.get('phone')
+    login = mobile_login(phone) if phone else guardian['email'].lower()
+    db.execute('''insert into student_guardian_contacts (student_id,full_name,login,relationship)
+                  values (?,?,?,?)
+                  on conflict(student_id) do update set full_name=excluded.full_name,
+                      login=excluded.login,relationship=excluded.relationship where ?''',
+               (student_id, guardian['full_name'], login, guardian['relationship'], replace))
+
+
 def save_student(access, p_data):
     data = dict(p_data)
     ident, version = data.pop('id'), data.pop('version')
+    guardian = data.pop('guardian', None)
     db = access.db
     branch = data['branch_id']
     if not access.manage(branch):
@@ -74,6 +117,8 @@ def save_student(access, p_data):
         result = db.update('parent_students', ident, {**data, 'version': version+1, 'updated_at': now()})
     else:
         result = db.insert('parent_students', data)
+    if guardian:
+        save_guardian_contact(db, result['id'], guardian, replace=True)
     access.audit('parents.student_saved', 'student', result['id'], branch)
     return result
 
@@ -91,6 +136,12 @@ def link_guardian(access, p_data):
         invalid('Choose an active, verified parent account in this center.')
     old = db.one('select id from parent_guardians where student_id=? and user_id=?', (child['id'], parent))
     result = db.update('parent_guardians', old['id'], p_data) if old else db.insert('parent_guardians', p_data)
+    if not p_data['is_active']:
+        db.execute('''update school_invitations set revoked_at=?
+                      where accepted_at is null and revoked_at is null
+                        and email=(select email from accounts where id=?)
+                        and id in (select invitation_id from school_invitation_students where student_id=?)''',
+                   (now(), parent, child['id']))
     access.audit('parents.guardian_linked', 'guardian', result['id'], branch)
     return result
 

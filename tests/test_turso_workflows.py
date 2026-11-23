@@ -217,6 +217,48 @@ class TursoWorkflows(unittest.TestCase):
         self.assertEqual(profile['full_name'], '9123456780')
         self.assertEqual(set(profile['branch_roles']), {self.center, self.other_center})
 
+    def test_enrollment_details_prefill_and_mobile_invitation_connects_child(self):
+        student = self.request('POST', '/parents/students', self.owner, {
+            'branch_id': self.center, 'class_id': self.classroom, 'full_name': 'New Student',
+            'guardian': {'full_name': 'New Guardian', 'phone': '+91 98765 43210', 'relationship': 'Mother'},
+        }).json()
+        self.assertEqual(self.request('GET', '/school/workspace', self.teacher).json()['students'], [])
+        enrollments = self.request('GET', '/school/workspace', self.owner).json()['students']
+        self.assertEqual(next(row for row in enrollments if row['id'] == student['id'])['guardian'],
+                         {'full_name': 'New Guardian', 'phone': '9876543210', 'email': None, 'relationship': 'Mother'})
+        invitation = {'role': 'parent', 'full_name': 'New Guardian', 'phone': '9876543210',
+                      'student_id': student['id'], 'relationship': 'Mother'}
+        self.request('POST', '/school/access/invite', self.owner,
+                     {**invitation, 'branch_id': self.other_center}, code=422)
+        result = self.request('POST', '/school/access/invite', self.owner,
+                              {**invitation, 'branch_id': self.center}).json()
+        parent = self.request('POST', '/auth/claim-mobile-invitation', data={
+            'phone': invitation['phone'], 'pin': '539176', 'invitation_token': result['token'],
+        }).json()
+        children = self.request('GET', '/parents/workspace', parent).json()['students']
+        self.assertEqual([(row['id'], row['relationship']) for row in children], [(student['id'], 'Mother')])
+        self.request('GET', f'/parents/children/{self.child}/posts', parent, code=403)
+        self.request('POST', '/parents/posts', self.teacher, {
+            'class_id': self.classroom, 'student_id': student['id'], 'kind': 'diary', 'title': 'Today', 'body': 'Test update',
+        }, code=201)
+        self.assertEqual(self.request('GET', f"/parents/children/{student['id']}/posts", parent).json()['total'], 1)
+
+    def test_existing_parent_can_be_connected_to_student_added_before_upgrade(self):
+        with transaction(self.settings, write=True) as db:
+            db.execute('drop table school_invitation_students')
+            db.execute('drop table student_guardian_contacts')
+        initialize(self.settings, bootstrap=False)
+        initialize(self.settings, bootstrap=False)
+        students = self.request('GET', '/school/workspace', self.owner).json()['students']
+        self.assertIsNone(next(row for row in students if row['id'] == self.child)['guardian'])
+        parent_id = self.request('GET', '/session', self.unlinked).json()['id']
+        self.request('POST', '/school/access/grant', self.owner, {
+            'branch_id': self.center, 'role': 'parent', 'user_id': parent_id,
+            'student_id': self.child, 'relationship': 'Guardian',
+        })
+        children = self.request('GET', '/parents/workspace', self.unlinked).json()['students']
+        self.assertEqual([row['id'] for row in children], [self.child])
+
     def test_readiness_config_and_distinct_center_permissions(self):
         response=self.client.get('/ready')
         self.assertEqual(response.status_code,200)

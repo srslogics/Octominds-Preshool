@@ -13,6 +13,7 @@ import libsql
 from fastapi import HTTPException
 
 SCHEMA = Path(__file__).with_name('schema.sql')
+FAMILY_ENROLLMENT_SCHEMA = SCHEMA.with_name('family_enrollment.sql')
 identifier = re.compile(r'[a-z_][a-z0-9_]*\Z')
 logger = logging.getLogger(__name__)
 
@@ -145,16 +146,22 @@ def transaction(settings, *, write=False):
             con.close()
 
 
-def initialize(settings):
+def initialize(settings, *, bootstrap=True):
     # Keep DDL in one transaction. The schema has no embedded statement semicolons.
     with transaction(settings, write=True) as db:
-        if db.scalar("select count(*) from sqlite_master where type='table' and name='app_schema'"):
+        has_schema = db.scalar("select 1 from sqlite_master where type='table' and name='app_schema'")
+        if has_schema:
             if db.scalar('select max(version) from app_schema') != 1:
                 raise RuntimeError('Unexpected schema version')
+            scripts = [FAMILY_ENROLLMENT_SCHEMA]
+        elif bootstrap:
+            scripts = [SCHEMA, FAMILY_ENROLLMENT_SCHEMA]
+        else:
             return
-        for statement in SCHEMA.read_text().split(';'):
-            if statement.strip():
-                db.execute(statement)
+        for script in scripts:
+            for statement in script.read_text().split(';'):
+                if statement.strip():
+                    db.execute(statement)
 
 
 def ready(settings):

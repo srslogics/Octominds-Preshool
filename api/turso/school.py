@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import HTTPException
 
 from ..auth import mobile_from_login, mobile_login
+from . import families
 from .access import GLOBAL, Access, forbidden, invalid
 from .db import now, token_hash
 
@@ -39,7 +40,7 @@ def scope_rows(access, table):
 
 def workspace(access):
     rows = {kind: scope_rows(access,table) for kind,table in TABLES.items()}
-    return {**rows, 'memberships': access.memberships}
+    return {**rows, 'memberships': access.memberships, 'students': families.enrollment_students(access)}
 
 
 def require_open_year(access, year_id, branch):
@@ -116,8 +117,10 @@ def directory(access):
     member_ids = {m['user_id'] for m in memberships}
     users = [u for u in db.all('select p.id,p.full_name,p.is_active,a.email from profiles p join accounts a on a.id=p.id order by p.full_name')
              if u['id'] in member_ids]
-    invitations = [i for i in db.all('''select id,email,full_name,branch_id,role,expires_at,membership_expires_at,
-        created_by,created_at,accepted_by,accepted_at,revoked_at from school_invitations order by created_at desc''')
+    invitations = [i for i in db.all('''select i.id,i.email,i.full_name,i.branch_id,i.role,i.expires_at,i.membership_expires_at,
+        i.created_by,i.created_at,i.accepted_by,i.accepted_at,i.revoked_at,s.full_name student_name
+        from school_invitations i left join school_invitation_students l on l.invitation_id=i.id
+        left join parent_students s on s.id=l.student_id order by i.created_at desc''')
                    if access.manage(i['branch_id'])]
     audit = [a for a in db.all("""select id,actor_user_id,branch_id,event_type,entity_type,entity_id,occurred_at
               from audit_events where event_type like 'school.%' order by occurred_at desc,id desc""")
@@ -144,6 +147,17 @@ def other_owner(db, target):
       and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))""", (target,))
 
 
+def existing_membership(access, role, branch):
+    return next((member for member in access.memberships
+                 if member['role'] == role and member['branch_id'] == branch), None)
+
+
+def connect_enrolled_guardian(access, guardian_id, branch, details):
+    families.require_enrollment_student(access, details['student_id'], branch)
+    return families.link_guardian(access, {'student_id': details['student_id'], 'user_id': guardian_id,
+                                          'relationship': details['relationship'], 'is_active': True})
+
+
 def access_command(access, p_action, p_data):
     db = access.db
     branch, role = p_data.get('branch_id'), p_data.get('role')
@@ -157,6 +171,12 @@ def access_command(access, p_action, p_data):
             'branch_id': branch, 'role': role, 'token_hash': token_hash(token), 'created_by': access.actor,
             'expires_at': (datetime.now(UTC)+timedelta(days=7)).isoformat(),
             'membership_expires_at': expiry_value(p_data.get('expires_at'), role)})
+        if p_data.get('student_id'):
+            student_id = p_data['student_id']
+            families.require_enrollment_student(access, student_id, branch)
+            db.insert('school_invitation_students', {'invitation_id': row['id'], 'student_id': student_id,
+                      'relationship': p_data['relationship']}, generate_id=False)
+            families.save_guardian_contact(db, student_id, p_data)
         result = {'id': row['id'], 'token': token, 'expires_at': row['expires_at']}
     elif p_action == 'revoke_invite':
         row = db.one('select * from school_invitations where id=?', (p_data['id'],))
@@ -187,8 +207,13 @@ def access_command(access, p_action, p_data):
         else:
             if not db.scalar('select 1 from profiles where id=? and is_active=1', (target,)):
                 invalid('Choose an active account.')
-            row = db.insert('user_memberships', {'user_id': target, 'branch_id': branch, 'role': role,
-                        'expires_at': expiry_value(p_data.get('expires_at'), role)})
+            student_id = p_data.get('student_id')
+            row = existing_membership(Access(db, target), role, branch) if student_id else None
+            if row is None:
+                row = db.insert('user_memberships', {'user_id': target, 'branch_id': branch, 'role': role,
+                            'expires_at': expiry_value(p_data.get('expires_at'), role)})
+            if student_id:
+                connect_enrolled_guardian(access, target, branch, p_data)
         result = {'id': row['id']}
     else:
         target = p_data['user_id']
@@ -223,12 +248,17 @@ def complete_invitation(access, invitation):
     db = access.db
     mobile = mobile_from_login(invitation['email'])
     role, branch = invitation['role'], invitation['branch_id']
-    membership = next((m for m in access.memberships if m['role'] == role and m['branch_id'] == branch), None) if mobile else None
+    enrollment = db.one('select student_id,relationship from school_invitation_students where invitation_id=?',
+                        (invitation['id'],))
+    membership = existing_membership(access, role, branch) if mobile or enrollment else None
     if membership is None:
         membership = db.insert('user_memberships', {'user_id': access.actor, 'role': role,
             'branch_id': branch, 'expires_at': invitation['membership_expires_at']})
-    if not mobile:
+    if not mobile and not enrollment:
         db.update('profiles', access.actor, {'full_name': invitation['full_name'], 'updated_at': now()})
+    if enrollment:
+        issuer = Access(db, invitation['created_by'])
+        connect_enrolled_guardian(issuer, access.actor, branch, enrollment)
     db.update('school_invitations', invitation['id'], {'accepted_by': access.actor, 'accepted_at': now()})
     access.audit('school.invitation_accepted', 'membership', membership['id'], branch)
     return {'id': membership['id']}

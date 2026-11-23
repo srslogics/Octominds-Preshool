@@ -28,9 +28,8 @@ logger = logging.getLogger("octominds.api")
 
 @asynccontextmanager
 async def lifespan(app):
-    # Development can create a local database on first launch. Cloud setup is explicit.
-    if not settings.turso_database_url:
-        await run_in_threadpool(initialize, settings)
+    # A fresh cloud database still requires explicit provisioning.
+    await run_in_threadpool(initialize, settings, bootstrap=not settings.turso_database_url)
     yield
 
 

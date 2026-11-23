@@ -108,21 +108,16 @@ class SaveRecord(Fields):
     data: dict
 
 
-class Invitation(Fields):
+class Recipient(Fields):
     email: str | None = Field(None, min_length=3, max_length=254, pattern=r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
     phone: str | None = Field(None, max_length=30)
     full_name: str = Field(min_length=1, max_length=120)
-    role: Role
-    branch_id: UUID | None = None
-    expires_at: datetime | None = None
 
     @model_validator(mode='after')
     def validate_recipient(self):
         if (self.email is None) == (self.phone is None):
             raise ValueError('Enter either an email address or a mobile number.')
         if self.phone is not None:
-            if self.role != Role.PARENT:
-                raise ValueError('Mobile invitations are available for parents and guardians.')
             self.phone = normalize_mobile(self.phone)
             if self.phone is None:
                 raise ValueError('Enter a 10-digit Indian mobile number.')
@@ -131,11 +126,36 @@ class Invitation(Fields):
         return self
 
 
-class Grant(Fields):
-    user_id: UUID
+class EnrollmentGuardian(Recipient):
+    relationship: str = Field(min_length=1, max_length=40)
+
+
+class StudentAccess(Fields):
     role: Role
     branch_id: UUID | None = None
     expires_at: datetime | None = None
+    student_id: UUID | None = None
+    relationship: str | None = Field(None, min_length=1, max_length=40)
+
+    @model_validator(mode='after')
+    def validate_student(self):
+        if self.student_id and self.role != Role.PARENT:
+            raise ValueError('Only parent or guardian access can be linked to a student.')
+        if bool(self.student_id) != bool(self.relationship):
+            raise ValueError('Choose a student and enter the parent’s relationship.')
+        return self
+
+
+class Invitation(Recipient, StudentAccess):
+    @model_validator(mode='after')
+    def validate_mobile_role(self):
+        if self.phone and self.role != Role.PARENT:
+            raise ValueError('Mobile invitations are available for parents and guardians.')
+        return self
+
+
+class Grant(StudentAccess):
+    user_id: UUID
 
 
 class RecordID(Fields):

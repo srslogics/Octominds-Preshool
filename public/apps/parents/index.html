@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#145c58" />
+    <meta name="theme-color" content="#fff9ee" />
     <meta name="referrer" content="same-origin" />
     <meta
       name="description"
@@ -11,7 +11,7 @@
     />
     <title>Families · OctoMinds</title>
     <link rel="icon" href="/assets/octominds-icon-192.png" />
-    <link rel="stylesheet" href="/apps/parents/parents.css?v=family-sign-in-1" />
+    <link rel="stylesheet" href="/apps/parents/parents.css?v=full-screen-1" />
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -95,6 +95,16 @@
         ><a href="/parents">Exit preview</a>
       </div>
       <div class="app-layout">
+        <header class="topbar">
+          <span class="portal-label">Family Portal</span>
+          <a class="mobile-brand" href="/parents" aria-label="OctoMinds families">
+            <img class="logo" src="/assets/octominds-logo-horizontal.png" alt="" />
+          </a>
+          <div class="header-actions">
+            <span id="accountName"></span>
+            <button id="signOut" class="quiet" type="button">Sign out</button>
+          </div>
+        </header>
         <aside class="sidebar">
           <a class="brand-link" href="/parents" aria-label="OctoMinds families"
             ><img
@@ -102,42 +112,23 @@
               src="/assets/octominds-logo-horizontal.png"
               alt="OctoMinds"
           /></a>
-          <p class="eyebrow sidebar-label">FAMILY SPACE</p>
           <nav id="navigation" aria-label="Main navigation"></nav>
-          <div class="sidebar-note">
-            <span aria-hidden="true">✳</span
-            ><strong>A little connection.<br />A big difference.</strong>
-            <p>School and home, growing together.</p>
-          </div>
           <a class="school-link" href="/school">School administration</a>
         </aside>
         <div class="app-body">
-          <header class="topbar">
-            <span class="portal-label">The family portal</span>
-            <div class="header-actions">
-              <span id="accountName"></span
-              ><button id="signOut" class="quiet" type="button">
-                Sign out
-              </button>
-            </div>
-          </header>
           <main id="main" tabindex="-1">
             <div class="page-heading">
               <div>
-                <p class="eyebrow" id="pageEyebrow">HOME & SCHOOL, CONNECTED</p>
-                <h1 id="pageTitle">A little closer to their day.</h1>
+                <h1 id="pageTitle">Today at school</h1>
                 <p id="pageDescription"></p>
               </div>
               <div id="childPicker" class="child-picker">
-                <label for="childSelect">Following along with</label
+                <label for="childSelect">Viewing for</label
                 ><select id="childSelect"></select>
               </div>
             </div>
             <div id="content" aria-live="polite"></div>
           </main>
-          <footer class="app-footer">
-            Made for the moments that matter. <strong>OctoMinds</strong>
-          </footer>
         </div>
       </div>
     </div>
@@ -165,6 +156,6 @@
     </dialog>
     <p id="toast" role="status" class="toast" hidden></p>
     <script src="/config.js"></script>
-    <script type="module" src="/apps/parents/parents.js?v=family-sign-in-1"></script>
+    <script type="module" src="/apps/parents/parents.js?v=family-portal-2"></script>
   </body>
 </html>

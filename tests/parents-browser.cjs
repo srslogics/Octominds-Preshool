@@ -71,6 +71,17 @@ watchdog.unref();
   const screenshotDir = process.env.TEST_SCREENSHOT_DIR;
   await page.goto(origin + "/parents");
   await page.getByRole("heading", { name: "Welcome to Family Portal" }).waitFor();
+  async function signInFillsViewport() {
+    const bounds = await page.locator(".auth-shell").evaluate((shell) => {
+      const { top, left, right, bottom } = shell.getBoundingClientRect();
+      return { top, left, right, bottom, width: innerWidth, height: innerHeight };
+    });
+    assert.equal(bounds.top, 0);
+    assert.equal(bounds.left, 0);
+    assert.equal(bounds.right, bounds.width);
+    assert.ok(bounds.bottom >= bounds.height);
+  }
+  await signInFillsViewport();
   assert.equal(await page.locator("#remember").isChecked(), false);
   assert.equal(await page.getByRole("link", { name: /Need help signing in/ }).getAttribute("href"), "/school");
   if (screenshotDir) {
@@ -78,6 +89,7 @@ watchdog.unref();
     await page.screenshot({ path: path.join(screenshotDir, "parents-sign-in-desktop.png") });
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await signInFillsViewport();
   if (screenshotDir) {
     await page.screenshot({ path: path.join(screenshotDir, "parents-sign-in-phone.png"), fullPage: true });
   }
@@ -216,6 +228,10 @@ watchdog.unref();
   await page.setViewportSize({ width: 390, height: 844 });
   await nav("Today");
   await visible("The latest little moments");
+  const mobileNav = page.getByRole("navigation", { name: "Main navigation" });
+  assert.equal(await mobileNav.getByRole("link").count(), 8);
+  assert.ok(await mobileNav.evaluate((nav) => nav.scrollWidth <= nav.clientWidth));
+  assert.equal(await mobileNav.getByRole("link", { name: "Today" }).getAttribute("aria-current"), "page");
   await noOverflow();
   await a11y();
   if (screenshotDir)

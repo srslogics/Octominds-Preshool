@@ -44,6 +44,7 @@ export function createGallery({
     </dialog>
     <dialog id="albumEditor" class="album-editor" aria-labelledby="albumEditorTitle"><form id="albumForm">
       <div class="dialog-heading"><h2 id="albumEditorTitle">Share a school memory</h2><button type="button" class="quiet" data-gallery-close="upload" aria-label="Close album editor">×</button></div>
+      <div class="album-form-body">
       <p class="support-note">Add up to 12 photos. Only the selected families can see the album after you publish it.</p>
       <fieldset id="albumDetails"><legend class="sr-only">Album details</legend>
       <label>Class<select name="class_id" required></select></label><label>Share with<select name="student_id"></select></label>
@@ -51,6 +52,7 @@ export function createGallery({
       <label>Photo date<input name="taken_on" type="date" required></label><label>A little about the day<textarea name="description" maxlength="2000" placeholder="Tell families about these moments…"></textarea></label></fieldset>
       <label class="upload-drop">Choose photos<input id="albumFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple><span>JPEG, PNG, or WebP · up to 10 MiB each</span></label>
       <div id="uploadQueue" class="upload-queue" aria-live="polite"></div><p id="albumError" class="field-error" role="alert"></p>
+      </div>
       <div class="dialog-actions"><button type="button" data-gallery-close="upload" class="secondary">Close</button><button id="discardAlbum" type="button" class="danger" data-gallery-discard hidden>Discard draft</button><button id="publishAlbum" type="submit" class="primary">Upload & publish</button></div>
     </form></dialog>`,
   );

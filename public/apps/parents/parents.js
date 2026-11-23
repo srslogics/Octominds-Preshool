@@ -1,5 +1,5 @@
 import { createPreview } from "./parents-preview.js?v=2";
-import { createGallery } from "./parents-gallery.js?v=2";
+import { createGallery } from "./parents-gallery.js?v=3";
 const $ = (s) => document.querySelector(s);
 const cfg = window.OCTOMINDS_CONFIG || {};
 const KEY = "octominds.inventory.session";
@@ -40,44 +40,44 @@ const labels = {
 };
 const pages = {
   today: [
-    "A little closer to their day.",
-    "The little moments, updates, and discoveries from school.",
+    "Today at school",
+    "Catch up on class updates and what’s coming up next.",
   ],
   updates: [
-    "From your school.",
-    "Stay in the loop with your child’s class and school community.",
+    "School updates",
+    "Notices, activities, and events from your school team.",
   ],
   homework: [
-    "Learning carries on at home.",
-    "Small, playful activities to discover together.",
+    "Home learning",
+    "Activities from the classroom to try together at home.",
   ],
   diary: [
-    "Their day, in little moments.",
-    "Notes and discoveries shared by the school team.",
+    "Daily diary",
+    "Notes about your child’s school day.",
   ],
   calendar: [
-    "Good things to look forward to.",
-    "Class events and school holidays, all in one place.",
+    "Calendar",
+    "Class events and school holidays.",
   ],
   messages: [
-    "A conversation with school.",
-    "Ask a question or share something the school team should know.",
+    "Ask the school",
+    "Send a message to your child’s school team.",
   ],
   child: [
-    "Your little learner.",
-    "A shared connection between your family and school.",
+    "My child",
+    "Class details and family access.",
   ],
   gallery: [
-    "Their day, in pictures.",
-    "The little moments you’ll want to keep, shared by your school team.",
+    "Photo gallery",
+    "Albums shared with your family by the school team.",
   ],
   "school-albums": [
     "School albums",
     "Review drafts, publish photos, and manage shared albums.",
   ],
   manage: [
-    "The school desk.",
-    "Connect families and share the moments that matter.",
+    "School desk",
+    "Manage family connections and share updates or photos.",
   ],
 };
 let session = null,
@@ -301,20 +301,23 @@ async function enter() {
 function navigation() {
   const items = [
     ["today", "home", "Today"],
-    ["updates", "updates", "School updates"],
-    ["homework", "homework", "Home learning"],
-    ["diary", "diary", "Daily diary"],
+    ["updates", "updates", "School updates", "Updates"],
+    ["homework", "homework", "Home learning", "Learning"],
+    ["diary", "diary", "Daily diary", "Diary"],
     ["calendar", "calendar", "Calendar"],
-    ["gallery", "gallery", "Photo gallery"],
-    ["messages", "messages", "Ask the school"],
+    ["gallery", "gallery", "Photo gallery", "Photos"],
+    ["messages", "messages", "Ask the school", "Messages"],
     ["child", "child", "My child"],
   ];
   if (workspace.classes.length || workspace.students.some((s) => s.can_manage))
     items.push(["manage", "manage", "School desk"]);
+  const current = route() === "school-albums" ? "manage" : route();
   $("#navigation").innerHTML = items
     .map(
-      ([r, i, name]) =>
-        `<a href="${go(r)}" class="${route() === r ? "active" : ""}" ${route() === r ? 'aria-current="page"' : ""}>${icon(i)}${name}</a>`,
+      ([r, i, name, shortName]) =>
+        `<a href="${go(r)}" aria-label="${name}" ${current === r ? 'aria-current="page"' : ""}>
+          ${icon(i)}<span class="nav-label">${name}</span>${shortName ? `<span class="nav-label-short">${shortName}</span>` : ""}
+        </a>`,
     )
     .join("");
 }
@@ -380,8 +383,6 @@ async function render() {
   navigation();
   $("#childPicker").hidden =
     ["manage", "school-albums"].includes(r) || !workspace.students.length;
-  $("#pageEyebrow").textContent =
-    r === "manage" ? "FOR THE SCHOOL TEAM" : "HOME & SCHOOL, CONNECTED";
   $("#pageTitle").textContent = pages[r][0];
   $("#pageDescription").textContent = pages[r][1];
   $("#content").innerHTML = loading();
@@ -427,7 +428,39 @@ async function render() {
         .filter((e) => e.event_date >= isoDate(new Date()))
         .sort((a, b) => a.event_date.localeCompare(b.event_date))
         .slice(0, 3);
-      html = `<section class="welcome-card"><div><span class="child-badge">${esc(s.class_name)} · ${esc(s.center_name)}</span><h2>A whole little world<br>of discovery.</h2><p>Follow ${esc(s.full_name.split(" ")[0])}’s school day, celebrate their discoveries, and keep the conversation going.</p><a class="button primary" href="${go("diary")}">See their daily diary</a></div><span class="welcome-mark" aria-hidden="true">✳</span></section><div class="dashboard-grid"><section><div class="panel-title"><h2>The latest little moments</h2><a href="${go("updates")}">View updates</a></div>${feed.posts.slice(0, 3).map(postCard).join("") || empty("updates", "A new chapter begins.", "Your school’s updates will appear here when they’re shared.")}</section><div><section class="panel"><div class="panel-title"><h2>Coming up this month</h2><a href="${go("calendar")}">Calendar</a></div>${upcoming.length ? eventRows(upcoming) : '<p class="support-note">No upcoming events this month. Enjoy the everyday discoveries.</p>'}</section><section class="panel"><div class="panel-title"><h2>A little connection</h2></div><div class="quick-links"><a href="${go("homework")}">${icon("homework")}Home learning</a><a href="${go("messages")}">${icon("messages")}Ask the school</a><a href="${go("child")}">${icon("child")}Your child’s details</a></div></section></div></div>`;
+      html = `
+        <section class="welcome-card">
+          <div class="welcome-copy">
+            <span class="child-badge">${esc(s.class_name)} · ${esc(s.center_name)}</span>
+            <h2>See ${esc(s.full_name.split(" ")[0])}’s day</h2>
+            <a class="button primary" href="${go("diary")}">Open daily diary</a>
+          </div>
+          <div class="welcome-art" aria-hidden="true">
+            <span class="welcome-sparkle welcome-sparkle-left">✦</span>
+            <div class="welcome-mascot"><img src="/assets/octominds-logo-horizontal.png" alt="" width="1437" height="540" /></div>
+            <span class="welcome-sparkle welcome-sparkle-right">✧</span>
+          </div>
+        </section>
+        <div class="dashboard-grid">
+          <section>
+            <div class="panel-title"><h2>The latest little moments</h2><a href="${go("updates")}">View updates</a></div>
+            ${feed.posts.slice(0, 3).map(postCard).join("") || empty("updates", "No updates yet", "Updates will appear here when the school shares them.")}
+          </section>
+          <div>
+            <section class="panel upcoming-panel">
+              <div class="panel-title"><h2>Coming up this month</h2><a href="${go("calendar")}">Calendar</a></div>
+              ${upcoming.length ? eventRows(upcoming) : '<p class="support-note">No upcoming events this month.</p>'}
+            </section>
+            <section class="panel">
+              <div class="panel-title"><h2>Quick links</h2></div>
+              <div class="quick-links">
+                <a href="${go("homework")}">${icon("homework")}Home learning</a>
+                <a href="${go("messages")}">${icon("messages")}Ask the school</a>
+                <a href="${go("child")}">${icon("child")}Your child’s details</a>
+              </div>
+            </section>
+          </div>
+        </div>`;
     } else {
       const kind = r === "updates" ? "all" : r;
       const feed = await api(
@@ -443,7 +476,7 @@ async function render() {
   }
 }
 function profileScreen(s) {
-  return `<div class="profile-hero"><span class="avatar" aria-hidden="true">${esc(initials(s.full_name))}</span><div><h2>${esc(s.full_name)}</h2><p>${esc(s.class_name)} · ${esc(s.year_name)}</p></div></div><div class="profile-grid"><section class="panel"><h2>A place to grow</h2><dl class="facts">${[
+  return `<div class="profile-hero"><span class="avatar" aria-hidden="true">${esc(initials(s.full_name))}</span><div><h2>${esc(s.full_name)}</h2><p>${esc(s.class_name)} · ${esc(s.year_name)}</p></div></div><div class="profile-grid"><section class="panel"><h2>Enrollment</h2><dl class="facts">${[
     ["School center", s.center_name],
     ["Class", s.class_name],
     ["Academic year", s.year_name],
@@ -452,7 +485,7 @@ function profileScreen(s) {
     .map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`)
     .join(
       "",
-    )}</dl></section><section class="panel"><h2>Home & school</h2><dl class="facts"><div><dt>Your account</dt><dd>${esc(user.full_name)}</dd></div>${s.relationship ? `<div><dt>Relationship</dt><dd>${esc(s.relationship)}</dd></div>` : ""}</dl><p class="support-note">Need to update your child’s name, class, or family access? Your school administrator can help keep their details correct.</p><a class="button secondary" href="${go("messages")}">Contact the school</a></section></div>`;
+    )}</dl></section><section class="panel"><h2>Family access</h2><dl class="facts"><div><dt>Your account</dt><dd>${esc(user.full_name)}</dd></div>${s.relationship ? `<div><dt>Relationship</dt><dd>${esc(s.relationship)}</dd></div>` : ""}</dl><p class="support-note">Contact the school to update your child’s details or family access.</p><a class="button secondary" href="${go("messages")}">Contact the school</a></section></div>`;
 }
 async function messageScreen(s) {
   const result = await api(`/children/${s.id}/messages?page=${page}`);
@@ -490,7 +523,22 @@ function manageScreen() {
       "This space is for the school team.",
       "Your family updates are available from Today.",
     );
-  return `<div class="staff-actions"><button data-gallery-upload>${icon("gallery")}<div><strong>Share photos</strong><span>Create a private, dated album for families.</span></div></button><a class="button secondary" href="${go("school-albums")}">Manage albums</a>${mayManage ? `<button data-edit="student">${icon("child")}<div><strong>Register a child</strong><span>Place a child in an existing school class.</span></div></button><button data-edit="guardian">${icon("plus")}<div><strong>Connect a family</strong><span>Link an invited parent account to their child.</span></div></button>` : ""}<button data-edit="post">${icon("updates")}<div><strong>Share an update</strong><span>Publish a notice, activity, diary note, or event.</span></div></button></div><section class="panel"><div class="panel-title"><h2>Children & family connections</h2><button data-refresh class="quiet">Refresh</button></div><div class="student-list">${
+  return `<div class="staff-actions">
+    ${workspace.classes.length ? `<button type="button" class="staff-action" data-gallery-upload>
+      ${icon("gallery")}<span><strong>Share photos</strong><small>Create a private album for families.</small></span>
+    </button>` : ""}
+    <a class="staff-action" href="${go("school-albums")}" aria-labelledby="manageAlbumsLabel" aria-describedby="manageAlbumsHint">
+      ${icon("gallery")}<span><strong id="manageAlbumsLabel">Manage albums</strong><small id="manageAlbumsHint">Review drafts and published albums.</small></span>
+    </a>
+    ${mayManage ? `<button type="button" class="staff-action" data-edit="student">
+      ${icon("child")}<span><strong>Register a child</strong><small>Place a child in a school class.</small></span>
+    </button><button type="button" class="staff-action" data-edit="guardian">
+      ${icon("plus")}<span><strong>Connect a family</strong><small>Link a parent account to their child.</small></span>
+    </button>` : ""}
+    ${workspace.classes.length ? `<button type="button" class="staff-action" data-edit="post">
+      ${icon("updates")}<span><strong>Share an update</strong><small>Publish a notice, activity, diary note, or event.</small></span>
+    </button>` : ""}
+    </div><section class="panel"><div class="panel-title"><h2>Children & family connections</h2><button data-refresh class="quiet">Refresh</button></div><div class="student-list">${
     workspace.students
       .map((s) => {
         const linked = workspace.guardians.filter(
@@ -766,7 +814,8 @@ window.addEventListener("hashchange", () => {
   if ($("#portal").hidden) return;
   page = 1;
   render();
-  $("#main").focus();
+  window.scrollTo(0, 0);
+  $("#main").focus({ preventScroll: true });
 });
 $(".skip").addEventListener("click", (event) => {
   event.preventDefault();

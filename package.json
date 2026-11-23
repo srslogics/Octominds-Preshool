@@ -9,9 +9,10 @@
     "dev": "npm run build && python3 -m http.server 4173 --directory dist",
     "build": "node scripts/build-static.mjs",
     "start": "npm run build && python3 -m http.server 4173 --directory dist",
-    "test": "npm run build && node --check public/apps/inventory/app.js && node --check public/apps/inventory/pages.js && node --check public/apps/school/school.js && node --check public/sw.js && node --check public/apps/parents/parents.js && node --check public/apps/parents/parents-preview.js && node --check public/apps/parents/parents-gallery.js && node --check public/apps/parents/parents-gallery-preview.js && node --test tests/*.test.mjs",
+    "test": "npm run build && node --check public/assets/session.js && node --check public/apps/inventory/app.js && node --check public/apps/inventory/pages.js && node --check public/apps/school/school.js && node --check public/sw.js && node --check public/apps/parents/parents.js && node --check public/apps/parents/parents-preview.js && node --check public/apps/parents/parents-gallery.js && node --check public/apps/parents/parents-gallery-preview.js && node --test tests/*.test.mjs",
     "test:parents": "node tests/parents-browser.cjs",
-    "test:gallery": "node tests/gallery-browser.cjs"
+    "test:gallery": "node tests/gallery-browser.cjs",
+    "test:session": "node tests/session-browser.cjs"
   },
   "devDependencies": {
     "axe-core": "^4.14.1",

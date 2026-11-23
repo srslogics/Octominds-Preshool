@@ -2,7 +2,7 @@
   'use strict';
   const $ = s => document.querySelector(s);
   const cfg = window.OCTOMINDS_CONFIG || {};
-  const KEY = 'octominds.inventory.session';
+  const sessions = window.OctomindsSession;
   const INVITE = 'octominds.school.invitation';
   const INVITE_METHOD = 'octominds.school.invitation.method';
   const mobileInvite = () => sessionStorage.getItem(INVITE_METHOD) === 'mobile' && Boolean(sessionStorage.getItem(INVITE));
@@ -11,6 +11,7 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = {super_admin:'Owner',management:'Management',branch_admin:'Center administrator',teacher:'Teacher',accountant:'Accountant',admission_counsellor:'Admissions counsellor',parent:'Parent or guardian'};
   let emailCode, session, user, data, access, selected='', editing=null, generation=0, loading=false, noticeTimer;
+  let authEpoch = 0, refreshing;
   let accessSection = 'members';
   let accessRequest = null, accessError = null;
   const pages = {
@@ -48,7 +49,6 @@
   const findName=(kind,id)=>(data?.[kind]||[]).find(r=>r.id===id)?.name||'Unavailable';
   const fullName=id=>access?.users.find(r=>r.id===id)?.full_name|| (id===user?.id ? user.full_name : 'Assigned teacher');
   const notify=message=>{clearTimeout(noticeTimer);$('#notice').textContent=message;$('#notice').hidden=false;noticeTimer=setTimeout(()=>$('#notice').hidden=true,6500);};
-  const saveSession=(value,persistent)=>{session=value;sessionStorage.setItem(KEY,JSON.stringify(value));if(persistent)localStorage.setItem(KEY,JSON.stringify(value));else localStorage.removeItem(KEY);};
   function forgetInvitation() {
     sessionStorage.removeItem(INVITE);
     sessionStorage.removeItem(INVITE_METHOD);
@@ -77,35 +77,70 @@
     $('#schoolSidebar').toggleAttribute('data-open', open);
     $('#navToggle').setAttribute('aria-expanded', String(open));
   }
-  function clearSession(){resetAuth();setMenu(false);generation++;session=null;user=null;data=null;access=null;selected='';accessSection='members';sessionStorage.removeItem(KEY);localStorage.removeItem(KEY);$('#workspace').hidden=true;$('#auth').hidden=false;$('#content').replaceChildren();document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
-  async function auth(path,body,method='POST'){
-    const response=await fetch(`${cfg.apiBaseUrl||location.origin}/api/v1/auth${path}`,{method,headers:{'Content-Type':'application/json',...(session?.access_token?{Authorization:`Bearer ${session.access_token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  function clearSession(){
+    authEpoch++;generation++;sessions.clear(session);
+    session=null;refreshing=null;user=null;data=null;access=null;selected='';accessSection='members';
+    editing=null;accessRequest=null;accessError=null;loading=false;
+    resetAuth();$('#signInForm').reset();setMenu(false);
+    $('#workspace').hidden=true;$('#auth').hidden=false;$('#content').replaceChildren();
+    document.querySelectorAll('dialog[open]').forEach(d=>d.close());
+  }
+  async function auth(path,body,method='POST',token=session?.access_token){
+    const response=await fetch(`${cfg.apiBaseUrl||location.origin}/api/v1/auth${path}`,{method,keepalive:path.startsWith('/logout'),headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
     const result=await response.json().catch(()=>({}));
     if(!response.ok){const detail=typeof result.detail==='string'?result.detail:null;const error=Error(detail||result.msg||result.message||result.error_description||'Unable to complete sign-in');error.status=response.status;throw error;}
     return result;
   }
-  let refreshing;
+  const revokeSession = (token, scope) => auth(`/logout?scope=${scope}`, null, 'POST', token);
   async function refresh(){
     if(refreshing)return refreshing;
-    const old=session;
-    refreshing=(async()=>{const result=await auth('/token?grant_type=refresh_token',{refresh_token:old?.refresh_token});if(session!==old)throw Error('Session changed. Sign in again.');saveSession(result,Boolean(localStorage.getItem(KEY)));})();
-    try{await refreshing;}catch(error){if([400,401,403].includes(error.status)){clearSession();$('#authMessage').textContent='Your session expired. Please sign in again.';}throw error;}finally{refreshing=null;}
+    const old=session, version=authEpoch;
+    const task=(async()=>{
+      try{
+        const next=await sessions.refresh(old,()=>version===authEpoch&&session===old,
+          refresh_token=>auth('/token?grant_type=refresh_token',{refresh_token}),revokeSession);
+        if(version===authEpoch&&session===old) session=next;
+      }catch(error){
+        if(version===authEpoch&&[400,401,403].includes(error.status)) expireSession();
+        throw error;
+      }
+    })();
+    refreshing=task;
+    try{await task;}finally{if(refreshing===task)refreshing=null;}
+  }
+  function expireSession(){
+    clearSession();
+    $('#authMessage').textContent='Your session expired. Please sign in again.';
   }
   async function api(path,body,retry=true){
     if(!session?.access_token)throw Error('Please sign in');
+    const version=authEpoch;
     if(retry&&session.expires_at&&session.expires_at*1000<Date.now()+30000)await refresh();
+    if(version!==authEpoch)throw Error('Your session changed.');
     const token=session.access_token;
     const response=await fetch(`${cfg.apiBaseUrl||location.origin}/api/v1${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
-    if(response.status===401&&retry&&session?.access_token===token){await refresh();return api(path,body,false);}
+    if(version!==authEpoch)throw Error('Your session changed.');
+    if(response.status===401&&retry){
+      if(session.access_token===token)await refresh();
+      if(version!==authEpoch)throw Error('Your session changed.');
+      return api(path,body,false);
+    }
     const result=await response.json().catch(()=>({}));
-    if(!response.ok){if(response.status===401){clearSession();}const error=Error(typeof result.detail==='string'?result.detail:'The request could not be completed. Please retry.');error.status=response.status;throw error;}
+    if(version!==authEpoch)throw Error('Your session changed.');
+    if(!response.ok){
+      if(response.status===401&&session.access_token===token)expireSession();
+      const error=Error(typeof result.detail==='string'?result.detail:'The request could not be completed. Please retry.');
+      error.status=response.status;throw error;
+    }
     return result;
   }
   async function enter(){
+    const version=authEpoch;
     const invitation=sessionStorage.getItem(INVITE);
     if(invitation){
       const mobile = mobileInvite();
       await api('/school/accept-invitation',{token:invitation});
+      if(version!==authEpoch)return;
       forgetInvitation();
       if (mobile) {
         location.replace('/parents');
@@ -588,22 +623,46 @@
   document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',event=>{if(d.querySelector('button[type=submit]:disabled'))event.preventDefault();}));
   $('#copyInvite').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#inviteLink').value);$('#copyStatus').textContent='Invitation link copied.';}catch{$('#inviteLink').focus();$('#inviteLink').select();$('#copyStatus').textContent='Select and copy the invitation link.';}});
   async function logout(scope='local'){
-    try{await auth(`/logout?scope=${scope}`);clearSession();localStorage.setItem(`${KEY}.logout`,crypto.randomUUID());$('#authMessage').textContent='Signed out.';}
-    catch(error){clearSession();localStorage.setItem(`${KEY}.logout`,crypto.randomUUID());$('#authMessage').textContent='Signed out on this device. Server session revocation could not be confirmed.';}
+    const revocation=sessions.signOut(session,user?.id,scope,revokeSession);
+    clearSession();
+    const version=authEpoch;
+    const allDevices=scope==='global';
+    const submit=$('#signInForm [type="submit"]');
+    if(allDevices)submit.disabled=true;
+    $('#authMessage').textContent=allDevices?'Signing out on all devices…':'Signed out.';
+    try{
+      await revocation;
+      if(allDevices&&version===authEpoch)$('#authMessage').textContent='Signed out on all devices.';
+    }catch{
+      if(version===authEpoch)$('#authMessage').textContent='Signed out on this device. Your school could not confirm server sign-out.';
+    }finally{
+      if(allDevices)submit.disabled=false;
+    }
   }
   $('#signOut').addEventListener('click',()=>logout());
-  window.addEventListener('storage',event=>{if(event.key===`${KEY}.logout`)clearSession();});
+  window.addEventListener('storage',async event=>{
+    const version=authEpoch;
+    if(await sessions.signedOut(event,session,user?.id)&&version===authEpoch){
+      clearSession();$('#authMessage').textContent='Signed out.';
+    }
+  });
   $('#signInForm').addEventListener('submit',async event=>{
-    event.preventDefault();event.submitter.disabled=true;$('#authMessage').textContent='Signing in…';
+    event.preventDefault();
+    const version=++authEpoch, remember=$('#remember').checked;
+    event.submitter.disabled=true;$('#authMessage').textContent='Signing in…';
     try{
       const identity=$('#identity').value.trim(), password=$('#password').value;
       if (mobileInvite() && identity.includes('@')) throw Error('Enter the mobile number on your invitation.');
       const mobile=identity.replace(/\D/g,'').slice(-10);
       if(!identity.includes('@')&&(!/^[6-9]\d{9}$/.test(mobile)||!/^\d{6}$/.test(password)))throw Error('Enter a valid mobile number and six-digit PIN, or use your email and password.');
       const email=identity.includes('@')?identity:`${mobile}@auth.octominds.invalid`;
-      saveSession(await auth('/token?grant_type=password',{email,password}),$('#remember').checked);
-      await enter();$('#password').value='';$('#authMessage').textContent='';
-    }catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
+      const result=await auth('/token?grant_type=password',{email,password});
+      if(version!==authEpoch)return;
+      session=sessions.save(result,remember,session);
+      $('#password').value='';
+      await enter();
+      if(version===authEpoch)$('#authMessage').textContent='';
+    }catch(error){if(version===authEpoch)$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
   });
   $('#useExistingPin').addEventListener('click', () => {
     $('#identity').value = $('#invitedMobile').value;
@@ -629,6 +688,7 @@
       return;
     }
     button.disabled = true;
+    const version = ++authEpoch;
     $('#authMessage').textContent = 'Setting up your account…';
     try {
       const result = await auth('/claim-mobile-invitation', {
@@ -636,12 +696,13 @@
         pin,
         invitation_token: sessionStorage.getItem(INVITE),
       });
-      saveSession(result, false);
+      if (version !== authEpoch) return;
+      session = sessions.save(result, false, session);
       forgetInvitation();
       $('#mobileSignupForm').reset();
       location.replace('/parents');
     } catch (error) {
-      $('#authMessage').textContent = error.message;
+      if (version === authEpoch) $('#authMessage').textContent = error.message;
     } finally {
       button.disabled = false;
     }
@@ -662,15 +723,19 @@
   });
   $('#resetForm').addEventListener('submit',async event=>{
     event.preventDefault();event.submitter.disabled=true;
+    const version=++authEpoch;
     try{
       if($('#newPassword').value!==$('#confirmPassword').value)throw Error('Passwords do not match.');
       const result=await auth('/reset',{code:emailCode,password:$('#newPassword').value});
-      emailCode=null;saveSession(result,false);resetAuth();
-      try{await enter();}catch(error){$('#authMessage').textContent=error.status===403?'Password saved. Open your original school invitation to finish joining.':error.message;}
-    }catch(error){$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
+      if(version!==authEpoch)return;
+      emailCode=null;session=sessions.save(result,false,session);resetAuth();
+      try{await enter();}catch(error){if(version===authEpoch)$('#authMessage').textContent=error.status===403?'Password saved. Open your original school invitation to finish joining.':error.message;}
+    }catch(error){if(version===authEpoch)$('#authMessage').textContent=error.message;}finally{event.submitter.disabled=false;}
   });
   $('#dismissInvitation').addEventListener('click',()=>{forgetInvitation();clearSession();$('#authMessage').textContent='Invitation dismissed. Sign in to access your existing account.';});
   async function start(){
+    const version=authEpoch;
+    let checking=false;
     try{
       const hash=new URLSearchParams(location.hash.slice(1));
       if(hash.has('invite') || hash.has('mobile-invite')){
@@ -689,10 +754,17 @@
       }
       showInvitationControls();
       if (mobileInvite()) return;
-      session=JSON.parse(sessionStorage.getItem(KEY)||localStorage.getItem(KEY)||'null');
-      if(session)await enter();
-    }catch(error){$('#authMessage').textContent=error.message;}
+      session=sessions.restore();
+      if(!session)return;
+      checking=true;
+      $('#signInForm').hidden=true;$('.auth-actions').hidden=true;
+      $('#authMessage').textContent='Checking your saved session…';
+      await enter();
+      if(version===authEpoch)$('#authMessage').textContent='';
+    }catch(error){if(version===authEpoch)$('#authMessage').textContent=error.message;}
+    finally{if(checking&&version===authEpoch)showInvitationControls();}
   }
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  sessions.protectHistory($('#workspace'),()=>Boolean(session));
   start();
 })();

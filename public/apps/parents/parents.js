@@ -1,7 +1,7 @@
 import { createGallery } from "./parents-gallery.js?v=4";
 const $ = (s) => document.querySelector(s);
 const cfg = window.OCTOMINDS_CONFIG || {};
-const KEY = "octominds.inventory.session";
+const sessions = window.OctomindsSession;
 const previewRequested = new URLSearchParams(location.search).get("preview") === "1";
 let preview = null;
 const esc = (v) =>
@@ -130,12 +130,6 @@ function toast(text) {
   $("#toast").hidden = false;
   toastTimer = setTimeout(() => ($("#toast").hidden = true), 6000);
 }
-function storeSession(value, persistent) {
-  session = value;
-  sessionStorage.setItem(KEY, JSON.stringify(value));
-  if (persistent) localStorage.setItem(KEY, JSON.stringify(value));
-  else localStorage.removeItem(KEY);
-}
 function setPasswordVisibility(visible) {
   const input = $("#password");
   const toggle = $("#togglePassword");
@@ -146,24 +140,25 @@ function clearSession() {
   gallery.reset();
   epoch++;
   generation++;
+  sessions.clear(session);
   session = null;
+  refreshing = null;
   user = null;
   workspace = null;
   selected = "";
-  sessionStorage.removeItem(KEY);
-  localStorage.removeItem(KEY);
   $("#portal").hidden = true;
   $("#auth").hidden = false;
   $("#content").replaceChildren();
   $("#childSelect").replaceChildren();
   $("#accountName").textContent = "";
-  $("#password").value = "";
+  $("#loginForm").reset();
   setPasswordVisibility(false);
   $("#editor").close();
 }
 async function auth(path, body, token) {
   const response = await fetch(`${cfg.apiBaseUrl || location.origin}/api/v1/auth${path}`, {
     method: "POST",
+    keepalive: path.startsWith("/logout"),
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -175,7 +170,8 @@ async function auth(path, body, token) {
     const error = Error(
       response.status >= 500
         ? "School sign-in is temporarily unavailable. Please try again."
-        : result.msg ||
+        : (typeof result.detail === "string" && result.detail) ||
+            result.msg ||
             result.error_description ||
             result.message ||
             "Unable to sign in.",
@@ -185,18 +181,21 @@ async function auth(path, body, token) {
   }
   return result;
 }
+const revokeSession = (token, scope) => auth(`/logout?scope=${scope}`, null, token);
+
 async function refresh() {
   if (refreshing) return refreshing;
   const old = session,
     version = epoch;
   const task = (async () => {
     try {
-      const next = await auth("/token?grant_type=refresh_token", {
-        refresh_token: old?.refresh_token,
-      });
-      if (version !== epoch || session !== old)
-        throw Error("Your session changed. Please sign in again.");
-      storeSession(next, Boolean(localStorage.getItem(KEY)));
+      const next = await sessions.refresh(
+        old,
+        () => version === epoch && session === old,
+        (refresh_token) => auth("/token?grant_type=refresh_token", { refresh_token }),
+        revokeSession,
+      );
+      if (version === epoch && session === old) session = next;
     } catch (error) {
       if (version === epoch && [400, 401, 403].includes(error.status)) {
         clearSession();
@@ -230,12 +229,14 @@ async function api(
     session.expires_at * 1000 < Date.now() + 30000
   )
     await refresh();
+  if (version !== epoch) throw Error("Your session changed.");
+  const token = session.access_token;
   const response = await fetch(`/api/v1/parents${path}`, {
     method,
     cache: "no-store",
     headers: {
       ...extraHeaders,
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type":
         body instanceof Blob
           ? body.type || "application/octet-stream"
@@ -247,13 +248,18 @@ async function api(
   });
   if (version !== epoch) throw Error("Your session changed.");
   if (response.status === 401 && retry) {
-    await refresh();
+    if (session.access_token === token) await refresh();
+    if (version !== epoch) throw Error("Your session changed.");
     return api(path, body, method, false, responseType, extraHeaders);
   }
   if (response.ok && responseType === "blob") return response.blob();
   const result = await response.json().catch(() => ({}));
+  if (version !== epoch) throw Error("Your session changed.");
   if (!response.ok) {
-    if (response.status === 401) clearSession();
+    if (response.status === 401 && session.access_token === token) {
+      clearSession();
+      $("#authMessage").textContent = "Your session expired. Please sign in again.";
+    }
     throw Error(
       typeof result.detail === "string"
         ? result.detail
@@ -811,7 +817,8 @@ $("#togglePassword").hidden = false;
 $("#loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = event.submitter,
-    version = ++epoch;
+    version = ++epoch,
+    remember = $("#remember").checked;
   button.disabled = true;
   $("#authMessage").textContent = "Signing in…";
   try {
@@ -830,11 +837,11 @@ $("#loginForm").addEventListener("submit", async (event) => {
       password,
     });
     if (version !== epoch) return;
-    storeSession(result, $("#remember").checked);
+    session = sessions.save(result, remember, session);
     $("#password").value = "";
     setPasswordVisibility(false);
     await enter();
-    $("#authMessage").textContent = "";
+    if (version === epoch) $("#authMessage").textContent = "";
   } catch (error) {
     if (version === epoch) $("#authMessage").textContent = error.message;
   } finally {
@@ -846,20 +853,25 @@ $("#signOut").addEventListener("click", async () => {
     location.href = "/parents";
     return;
   }
-  const token = session?.access_token;
+  const revocation = sessions.signOut(session, user?.id, "local", revokeSession);
   clearSession();
-  localStorage.setItem(`${KEY}.logout`, crypto.randomUUID());
+  const version = epoch;
   $("#authMessage").textContent = "Signed out.";
   try {
-    await auth("/logout?scope=local", null, token);
+    await revocation;
   } catch {
-    if (!session)
+    if (epoch === version)
       $("#authMessage").textContent =
         "Signed out on this device. Your school could not confirm server sign-out.";
   }
 });
-window.addEventListener("storage", (event) => {
-  if (event.key === `${KEY}.logout` && !preview) clearSession();
+window.addEventListener("storage", async (event) => {
+  if (previewRequested) return;
+  const version = epoch;
+  if (await sessions.signedOut(event, session, user?.id) && version === epoch) {
+    clearSession();
+    $("#authMessage").textContent = "Signed out.";
+  }
 });
 $("#previewRole").addEventListener("change", async (event) => {
   gallery.reset();
@@ -873,6 +885,8 @@ $("#previewRole").addEventListener("change", async (event) => {
   await enter();
 });
 async function start() {
+  const form = $("#loginForm");
+  const version = epoch;
   try {
     if (previewRequested) {
       $("#loginForm button[type=submit]").disabled = true;
@@ -881,16 +895,20 @@ async function start() {
       await enter();
       return;
     }
-    session = JSON.parse(
-      sessionStorage.getItem(KEY) || localStorage.getItem(KEY) || "null",
-    );
-    if (session) await enter();
+    session = sessions.restore();
+    if (!session) return;
+    form.hidden = true;
+    $("#authMessage").textContent = "Checking your saved session…";
+    await enter();
+    if (version === epoch) $("#authMessage").textContent = "";
   } catch (error) {
-    $("#authMessage").textContent = error.message;
+    if (version === epoch) $("#authMessage").textContent = error.message;
   } finally {
+    form.hidden = false;
     if (previewRequested) $("#loginForm button[type=submit]").disabled = false;
   }
 }
 if ("serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(() => {});
+sessions.protectHistory($("#portal"), () => Boolean(session));
 start();

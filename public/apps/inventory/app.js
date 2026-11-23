@@ -5,7 +5,7 @@ $('#inventoryItemDialog').setAttribute('aria-labelledby', 'inventoryItemDialogTi
 $('#inventoryMovementDialog').setAttribute('aria-labelledby', 'movementDialogTitle');
 $('#inventorySetupDialog h2').id = 'inventorySetupDialogTitle';
 $('#inventorySetupDialog').setAttribute('aria-labelledby', 'inventorySetupDialogTitle');
-const SESSION_KEY = 'octominds.inventory.session';
+const sessions = window.OctomindsSession;
 const inventoryState = { page: 1, pageSize: 25, search: '', stockStatus: 'all', items: [], total: 0, lookups: null, loading: false };
 let session = null;
 let currentUser = null;
@@ -15,6 +15,7 @@ let inventoryLoadVersion = 0;
 let inventoryFullLoad = false;
 let movementAttempt = null;
 let refreshInFlight = null;
+let sessionEpoch = 0;
 
 function configured() {
   return Boolean(config.apiBaseUrl);
@@ -35,6 +36,7 @@ function showToast(message, kind = 'info') {
 
 async function accountRequest(path, options = {}) {
   const response = await fetch(`${config.apiBaseUrl}/api/v1/auth${path}`, {
+    keepalive: path.startsWith('/logout'),
     ...options,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
@@ -47,15 +49,20 @@ async function accountRequest(path, options = {}) {
   return payload;
 }
 
+function revokeSession(token, scope) {
+  return accountRequest(`/logout?scope=${scope}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+}
+
 async function refreshAccessToken() {
   if (refreshInFlight) return refreshInFlight;
   const previous = session;
   if (!previous?.refresh_token) { clearSession(); showLogin(); throw new Error('Please sign in again'); }
   const task = (async () => {
     try {
-      const refreshed = await accountRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: previous.refresh_token }) });
-      if (session !== previous) throw new Error('Session changed. Please try again');
-      saveSession(refreshed, Boolean(localStorage.getItem(SESSION_KEY)));
+      const refreshed = await sessions.refresh(previous, () => session === previous,
+        refresh_token => accountRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token }) }),
+        revokeSession);
+      if (session === previous) session = refreshed;
     } catch (error) {
       if (session === previous && [400,401,403].includes(error.status)) { clearSession(); showLogin(); }
       throw error;
@@ -67,16 +74,22 @@ async function refreshAccessToken() {
 
 async function apiRequest(path, options = {}, canRetry = true) {
   if (!session?.access_token) throw new Error('Authentication required');
+  const version = sessionEpoch;
   if (canRetry && session.expires_at && session.expires_at * 1000 <= Date.now() + 30000) await refreshAccessToken();
-  const token = session?.access_token;
-  if (!token) throw new Error('Please sign in again');
+  if (version !== sessionEpoch) throw new Error('Your session changed.');
+  const token = session.access_token;
   const response = await fetch(`${config.apiBaseUrl}${path}`, {
     ...options,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
+  if (version !== sessionEpoch) throw new Error('Your session changed.');
   if (response.status === 401 && session?.access_token === token) {
-    if (canRetry) { await refreshAccessToken(); return apiRequest(path, options, false); }
+    if (canRetry) {
+      await refreshAccessToken();
+      if (version !== sessionEpoch) throw new Error('Your session changed.');
+      return apiRequest(path, options, false);
+    }
     clearSession(); showLogin(); throw new Error('Your session has expired. Please sign in again');
   }
   if (response.status === 401 && canRetry && session?.access_token) return apiRequest(path, options, false);
@@ -88,14 +101,9 @@ async function apiRequest(path, options = {}, canRetry = true) {
   return payload;
 }
 
-function saveSession(value, persistent) {
-  session = value;
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(value));
-  if (persistent) localStorage.setItem(SESSION_KEY, JSON.stringify(value));
-  else localStorage.removeItem(SESSION_KEY);
-}
-
 function clearSession() {
+  sessionEpoch += 1;
+  sessions.clear(session);
   document.dispatchEvent(new Event('inventory:logout'));
   inventoryLoadVersion += 1;
   inventoryFullLoad = false;
@@ -117,8 +125,6 @@ function clearSession() {
   $('#togglePin').textContent = 'Show';
   $('#togglePin').setAttribute('aria-label', 'Show PIN');
   $$('dialog[open]').forEach((dialog) => dialog.close());
-  sessionStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(SESSION_KEY);
 }
 
 function showLogin() {
@@ -131,9 +137,9 @@ function userInitials(name) {
 }
 
 async function showApplication() {
-  const expectedSession = session;
+  const version = sessionEpoch;
   const verifiedUser = await apiRequest('/api/v1/session');
-  if (!session || (session !== expectedSession && session.user?.id !== expectedSession?.user?.id)) return;
+  if (version !== sessionEpoch) return;
   currentUser = verifiedUser;
   const allowed = ['super_admin', 'management', 'branch_admin', 'accountant'];
   if (!allowed.includes(currentUser.role)) { window.location.replace('/school'); return; }
@@ -152,24 +158,26 @@ async function showApplication() {
 async function signInWithPin(phone, pin, persistent) {
   const nationalNumber = phone.replace(/\D/g, '').slice(-10);
   if (!/^[6-9][0-9]{9}$/.test(nationalNumber) || !/^[0-9]{6}$/.test(pin)) throw new Error('Enter your mobile number and 6-digit PIN');
+  const version = ++sessionEpoch;
   const loginEmail = `${nationalNumber}@auth.octominds.invalid`;
   const value = await accountRequest('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: loginEmail, password: pin }) });
-  saveSession(value, persistent);
-  try { await showApplication(); } catch (error) { clearSession(); throw error; }
+  if (version !== sessionEpoch) return;
+  session = sessions.save(value, persistent, session);
+  try { await showApplication(); } catch (error) {
+    if (version === sessionEpoch) clearSession();
+    throw error;
+  }
 }
 
 async function restoreSession() {
+  const version = sessionEpoch;
   try {
     if (!configured()) return;
-    const stored = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-    if (!stored) return;
-    session = JSON.parse(stored);
-    if (session.expires_at && session.expires_at * 1000 <= Date.now() && session.refresh_token) {
-      const refreshed = await accountRequest('/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: session.refresh_token }) });
-      saveSession(refreshed, Boolean(localStorage.getItem(SESSION_KEY)));
-    }
-    await showApplication();
-  } catch { clearSession(); showLogin(); }
+    session = sessions.restore();
+    if (session) await showApplication();
+  } catch {
+    if (version === sessionEpoch) { clearSession(); showLogin(); }
+  }
   finally {
     $('#sessionCheck').classList.add('hidden');
     $('#loginForm').classList.remove('hidden');
@@ -198,17 +206,20 @@ $('#togglePin').addEventListener('click', () => {
 
 $('#forgotPin').addEventListener('click', () => showToast('Ask an OctoMinds administrator to reset your PIN'));
 $('#logoutButton').addEventListener('click', async () => {
-  const token = session?.access_token;
+  const revocation = sessions.signOut(session, currentUser?.id, 'local', revokeSession);
   clearSession(); showLogin();
-  localStorage.setItem(`${SESSION_KEY}.logout`, crypto.randomUUID());
-  try {
-    if (token) await accountRequest('/logout?scope=local', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-    showToast('Signed out safely');
-  } catch { showToast('Signed out on this device. The server could not be reached to revoke the session.', 'error'); }
+  showToast('Signed out safely');
+  const version = sessionEpoch;
+  try { await revocation; }
+  catch { if (version === sessionEpoch) showToast('Signed out on this device. Your school could not confirm server sign-out.', 'error'); }
 });
-window.addEventListener('storage', (event) => {
-  if (event.key === `${SESSION_KEY}.logout`) { clearSession(); showLogin(); }
+window.addEventListener('storage', async (event) => {
+  const version = sessionEpoch;
+  if (await sessions.signedOut(event, session, currentUser?.id) && version === sessionEpoch) {
+    clearSession(); showLogin();
+  }
 });
+sessions.protectHistory($('#appView'), () => Boolean(session));
 
 function inventoryBranchId() {
   return $('#inventoryBranchSelect')?.value || currentUser?.branch_id || '';

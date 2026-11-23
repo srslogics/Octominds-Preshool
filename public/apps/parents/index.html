@@ -11,10 +11,17 @@
     />
     <title>Families · OctoMinds</title>
     <link rel="icon" href="/assets/octominds-icon-192.png" />
-    <link rel="stylesheet" href="/apps/parents/parents.css?v=family-pages-1" />
+    <link rel="apple-touch-icon" href="/assets/octominds-icon-192.png" />
+    <link rel="manifest" href="/parents.webmanifest" />
+    <link rel="stylesheet" href="/apps/parents/parents.css?v=pwa-1" />
+    <script defer src="/apps/parents/parents-pwa.js?v=1"></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
+    <div id="offlineNotice" class="offline-notice" hidden>
+      <p role="status">You’re offline. Reconnect to sign in or get school updates.</p>
+      <button id="retryPortal" type="button">Try again</button>
+    </div>
     <main id="auth" class="auth-layout" aria-labelledby="authTitle">
       <div class="auth-shell">
         <div class="auth-hero">
@@ -77,6 +84,7 @@
               <span aria-hidden="true">✦</span> Peek inside our classrooms (guest preview)
             </a>
             <small>Sample school updates, activities, and photo albums.</small>
+            <button type="button" class="portal-install" data-install-portal hidden>Install Family Portal</button>
           </div>
         </div>
       </div>
@@ -113,7 +121,10 @@
               alt="OctoMinds"
           /></a>
           <nav id="navigation" aria-label="Main navigation"></nav>
-          <a class="school-link" href="/school">School administration</a>
+          <div class="portal-tools">
+            <button type="button" class="portal-install" data-install-portal hidden>Install Family Portal</button>
+            <a class="school-link" href="/school">School administration</a>
+          </div>
         </aside>
         <div class="app-body">
           <main id="main" tabindex="-1">
@@ -165,9 +176,16 @@
         </div>
       </form>
     </dialog>
+    <dialog id="installGuide" aria-labelledby="installTitle">
+      <form method="dialog">
+        <h2 id="installTitle">Install Family Portal</h2>
+        <p id="installInstructions"></p>
+        <div class="dialog-actions"><button type="submit" class="secondary">Done</button></div>
+      </form>
+    </dialog>
     <p id="toast" role="status" class="toast" hidden></p>
     <script src="/config.js"></script>
     <script src="/assets/session.js?v=1"></script>
-    <script type="module" src="/apps/parents/parents.js?v=family-pages-1"></script>
+    <script type="module" src="/apps/parents/parents.js?v=pwa-1"></script>
   </body>
 </html>

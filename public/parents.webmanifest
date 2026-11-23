@@ -1,0 +1,26 @@
+{
+  "id": "/parents",
+  "name": "OctoMinds Family Portal",
+  "short_name": "OctoMinds",
+  "description": "School updates, daily diary, and photos for OctoMinds families.",
+  "lang": "en",
+  "start_url": "/parents",
+  "scope": "/parents",
+  "display": "standalone",
+  "background_color": "#f8f7f2",
+  "theme_color": "#fff9ee",
+  "icons": [
+    {
+      "src": "/assets/octominds-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/octominds-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ function worker({ offline = false } = {}) {
     fetched = [];
   const context = {
     URL,
+    Response,
     self: {
       location: { origin: "https://school.test" },
       addEventListener: (name, fn) => (handlers[name] = fn),
@@ -19,7 +20,7 @@ function worker({ offline = false } = {}) {
     caches: {
       match: async (key) => {
         matched.push(key);
-        return { shell: key };
+        return { shell: key, text: async () => "<html><body>Parent Portal</body></html>" };
       },
     },
     fetch: async (req) => {
@@ -58,10 +59,9 @@ test("parent data and runtime config never fall back to a cached response", asyn
 });
 test("offline parent navigation uses the parent shell", async () => {
   const sw = worker({ offline: true });
-  assert.equal(
-    (await sw.request("/parents?preview=1", "navigate")).shell,
-    "/parents",
-  );
+  const response = await sw.request("/parents?preview=1", "navigate");
+  assert.deepEqual(sw.matched, ["/parents"]);
+  assert.match(await response.text(), /<body data-offline-launch>Parent Portal/);
 });
 test("offline school and inventory retain their own shells", async () => {
   const sw = worker({ offline: true });

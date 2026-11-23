@@ -123,6 +123,7 @@ const stamp = (value) =>
     minute: "2-digit",
   });
 const go = (r) => `${location.pathname}${location.search}#/${r}`;
+const isOffline = () => !navigator.onLine || document.body.hasAttribute("data-offline-launch");
 const empty = (name, title, text, action = "") =>
   `<div class="empty">${icon(name)}<h2>${esc(title)}</h2><p>${esc(text)}</p>${action}</div>`;
 const loading = () =>
@@ -1068,6 +1069,7 @@ $("#loginForm").addEventListener("submit", async (event) => {
   button.disabled = true;
   $("#authMessage").textContent = "Signing in…";
   try {
+    if (isOffline()) throw Error("Reconnect to sign in.");
     let identity = $("#identity").value.trim();
     const password = $("#password").value;
     if (!identity.includes("@")) {
@@ -1131,6 +1133,7 @@ $("#previewRole").addEventListener("change", async (event) => {
   page = 1;
   await enter();
 });
+let restoreWhenOnline = false;
 async function start() {
   const form = $("#loginForm");
   const version = epoch;
@@ -1144,18 +1147,28 @@ async function start() {
     }
     session = sessions.restore();
     if (!session) return;
+    if (isOffline()) {
+      restoreWhenOnline = true;
+      return;
+    }
     form.hidden = true;
     $("#authMessage").textContent = "Checking your saved session…";
     await enter();
     if (version === epoch) $("#authMessage").textContent = "";
   } catch (error) {
-    if (version === epoch) $("#authMessage").textContent = error.message;
+    if (version === epoch) {
+      restoreWhenOnline = Boolean(session) && isOffline();
+      $("#authMessage").textContent = restoreWhenOnline ? "" : error.message;
+    }
   } finally {
     form.hidden = false;
     if (previewRequested) $("#loginForm button[type=submit]").disabled = false;
   }
 }
-if ("serviceWorker" in navigator)
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+window.addEventListener("online", () => {
+  if (!restoreWhenOnline) return;
+  restoreWhenOnline = false;
+  start();
+});
 sessions.protectHistory($("#portal"), () => Boolean(session));
 start();

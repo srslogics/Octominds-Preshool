@@ -395,6 +395,36 @@ svg {
 .preview-link:hover { background: #d9f6e8; }
 .preview-link span { color: #896018; font-size: 1rem; }
 .preview-intro small { color: var(--muted); }
+.portal-install {
+  background: #fffdf9;
+  border-color: var(--portal-warm-line);
+  color: #6b3b1d;
+}
+.portal-install:hover { background: #fff1d1; }
+.preview-intro .portal-install { justify-self: center; }
+.portal-tools { display: grid; gap: 9px; margin-top: auto; }
+.offline-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 10px 16px;
+  background: #fff2cf;
+  color: #6b3b1d;
+  text-align: center;
+  font-size: .875rem;
+  font-weight: 700;
+}
+.offline-notice p { margin: 0; }
+.offline-notice button {
+  min-height: 34px;
+  padding: 4px 10px;
+  background: #fffdf9;
+  border-color: var(--portal-warm-line);
+  color: inherit;
+}
 @media (min-width: 820px) {
   .auth-shell {
     grid-template-columns: minmax(0, .98fr) minmax(0, 1.02fr);
@@ -505,7 +535,6 @@ svg {
 #navigation a svg { width: 19px; height: 19px; }
 .nav-label-short, .mobile-brand { display: none; }
 .school-link {
-  margin-top: auto;
   padding: 12px 9px 4px;
   border-top: 1px solid var(--line);
   font-size: .8125rem;
@@ -952,6 +981,8 @@ dialog::backdrop {
   }
   .sidebar .brand-link, .portal-label { display: none; }
   .school-link { display: none; }
+  .portal-tools:has(.portal-install[hidden]) { display: none; }
+  .portal-tools .portal-install { justify-self: center; }
   #navigation {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 4px;

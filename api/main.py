@@ -19,6 +19,7 @@ from .inventory.router import router as inventory_router
 from .school.router import router as school_router
 from .parents.router import router as parents_router
 from .parents.gallery import router as gallery_router
+from .teachers.router import router as teacher_router
 from .turso.accounts import router as auth_router
 from .turso.db import initialize, ready
 
@@ -45,6 +46,7 @@ app.include_router(inventory_router)
 app.include_router(school_router)
 app.include_router(parents_router)
 app.include_router(gallery_router)
+app.include_router(teacher_router)
 app.include_router(auth_router)
 
 
@@ -118,7 +120,7 @@ def frontend_config(config: Annotated[Settings, Depends(get_settings)]) -> Respo
 frontend_directory = Path(__file__).resolve().parents[1] / "public"
 
 # Public routes are independent of where each app's files live on disk.
-app_urls = {"inventory": "/", "school": "/school", "parents": "/parents"}
+app_urls = {"inventory": "/", "school": "/school", "parents": "/parents", "teachers": "/teachers"}
 html_pages = {
     url: frontend_directory / "apps" / app_name / "index.html"
     for app_name, url in app_urls.items()
@@ -132,6 +134,8 @@ legacy_pages = {
     "/school.html": "/school",
     "/parents/": "/parents",
     "/parents.html": "/parents",
+    "/teachers/": "/teachers",
+    "/teachers.html": "/teachers",
 }
 for app_name, url in app_urls.items():
     app_path = f"/apps/{app_name}"

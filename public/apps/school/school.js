@@ -155,6 +155,7 @@
     user=account;$('#userName').textContent=user.full_name;$('#userRole').textContent=labels[user.role]||user.role;
     $('#userInitials').textContent = (user.full_name || '').trim().split(/\s+/).slice(0, 2).map(name => name[0]).join('').toUpperCase();
     $('#auth').hidden=true;$('#workspace').hidden=false;
+    $('#teacherLink').hidden=!['super_admin','management','branch_admin','teacher'].includes(user.role);
     $('#inventoryLink').hidden=!['super_admin','management','branch_admin','accountant'].includes(user.role);
   }
   function loadAccess(){

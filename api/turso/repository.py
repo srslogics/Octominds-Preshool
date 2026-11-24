@@ -23,7 +23,7 @@ COMMANDS = {
     'parents_publish': families.publish,
     'parents_unpublish': families.unpublish,
     'parents_gallery': photos.gallery,
-    'parents_staff_albums': lambda access, p_page: photos.gallery(access, p_page=p_page),
+    'parents_staff_albums': lambda access, p_page, p_class=None: photos.gallery(access, p_page=p_page, p_class=p_class),
     'parents_album_detail': photos.detail,
     'parents_create_album': photos.create_album,
     'parents_album_command': photos.command,

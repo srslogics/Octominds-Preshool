@@ -12,6 +12,7 @@ const pages = [
   ["inventory", ["index.html"], ["OctoMinds Inventory", "loginForm", "inventoryPage"]],
   ["school", ["school/index.html", "school.html"], ["signInForm"]],
   ["parents", ["parents/index.html", "parents.html"], ["childSelect"]],
+  ["teachers", ["teachers/index.html", "teachers.html"], ["teacherClass"]],
 ];
 for (const [app, locations, markers] of pages) {
   const entry = resolve(dist, "apps", app, "index.html");
@@ -25,4 +26,4 @@ for (const [app, locations, markers] of pages) {
     await cp(entry, destination);
   }
 }
-console.log("OctoMinds Inventory, School, and Parent Portal built in dist/");
+console.log("OctoMinds Inventory, School, Parent Portal, and Teacher App built in dist/");

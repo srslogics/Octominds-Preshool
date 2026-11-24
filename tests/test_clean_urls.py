@@ -5,14 +5,14 @@ from api.main import app
 class CleanPageURLs(unittest.TestCase):
     def test_canonical_pages_and_head(self):
         with TestClient(app) as client:
-            for path, marker in [('/', 'loginForm'), ('/school', 'signInForm'), ('/parents', 'childSelect')]:
+            for path, marker in [('/', 'loginForm'), ('/school', 'signInForm'), ('/parents', 'childSelect'), ('/teachers', 'teacherClass')]:
                 response = client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(marker, response.text)
                 self.assertEqual(client.head(path).status_code, 200)
     def test_legacy_links_preserve_query(self):
         with TestClient(app) as client:
-            for old, new in [('/parents.html','/parents'),('/parents/','/parents'),('/school.html','/school'),('/school/','/school'),('/index.html','/'),('/index','/')]:
+            for old, new in [('/parents.html','/parents'),('/parents/','/parents'),('/school.html','/school'),('/school/','/school'),('/teachers.html','/teachers'),('/teachers/','/teachers'),('/index.html','/'),('/index','/')]:
                 response=client.get(old+'?source=email', follow_redirects=False)
                 self.assertEqual(response.status_code,308)
                 self.assertEqual(response.headers['location'],new+'?source=email')

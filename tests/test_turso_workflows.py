@@ -2,10 +2,12 @@
 import io
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -329,3 +331,61 @@ class TursoWorkflows(unittest.TestCase):
         self.assertIn('holidays', result['today']['calendar'])
         self.assertNotIn('today', self.request('GET', route, self.unlinked).json())
         self.request('GET', route, code=401)
+
+    def test_teacher_records_reach_linked_families(self):
+        workspace = self.request('GET', '/teachers/workspace', self.teacher).json()
+        self.assertEqual(workspace['account']['id'], self.teacher_id)
+        self.assertEqual([entry['id'] for entry in workspace['classes']], [self.classroom])
+        self.assertEqual([entry['id'] for entry in workspace['students']], [self.child])
+        self.request('GET', '/teachers/workspace', self.parent, code=403)
+
+        day = datetime.now(ZoneInfo('Asia/Kolkata')).date()
+        month = day.replace(day=1).isoformat()
+        records = f'/teachers/children/{self.child}'
+        family = f'/parents/children/{self.child}'
+        care_path = records + f'/daily/{day}'
+        care = {'attendance': 'present', 'arrival': '08:45', 'rest': 'Quiet rest',
+                'note': 'Shared books', 'pickup_note': 'Use the main entrance'}
+        self.request('PUT', care_path, self.parent, care, code=403)
+        self.request('PUT', care_path, self.teacher, {'attendance': 'absent', 'arrival': '08:45'}, code=422)
+        self.assertIsNone(self.request('GET', care_path, self.teacher).json())
+        self.assertEqual(self.request('PUT', care_path, self.teacher, care).json()['version'], 1)
+        self.request('PUT', care_path, self.teacher, care, code=409)
+        self.assertEqual(self.request('PUT', care_path, self.teacher, {**care, 'version': 1}).json()['version'], 2)
+        self.request('PUT', f'/teachers/classes/{self.classroom}/menu/{day}', self.teacher,
+                     {'lunch': 'Rice and vegetables'})
+        self.request('PUT', records + '/profile', self.teacher, {'allergies': 'Peanuts'}, code=403)
+        self.request('PUT', records + '/profile', self.owner, {'allergies': 'Peanuts'})
+        self.request('PUT', records + '/profile', self.teacher, {'version': 1, 'cubby': '12'})
+
+        classroom = self.school('classes', {
+            'branch_id': self.center, 'name': 'Unassigned', 'academic_year_id': self.year, 'capacity': 20,
+            'program_id': self.school('programs', {'branch_id': self.center, 'name': 'Other program'})['id'],
+        })['id']
+        another_child = self.request('POST', '/parents/students', self.owner, {
+            'branch_id': self.center, 'class_id': classroom, 'full_name': 'Other Child',
+        }).json()['id']
+        self.request('PUT', f'/teachers/children/{another_child}/daily/{day}', self.teacher, care, code=403)
+        self.request('GET', f'/teachers/classes/{classroom}/posts?kind=diary', self.teacher, code=403)
+        self.request('GET', f'/parents/gallery/staff?class_id={classroom}', self.teacher, code=403)
+        self.request('GET', family + '/profile', self.unlinked, code=403)
+        self.request('GET', family + '/posts?kind=diary', self.unlinked, code=403)
+
+        today = self.request('GET', f'/parents/workspace?today_month={month}', self.parent).json()['today']['care']
+        self.assertEqual(today['daily']['details']['note'], 'Shared books')
+        self.assertEqual(today['meals']['details']['lunch'], 'Rice and vegetables')
+        refresh = self.request('GET', family + f'/calendar?month={month}&include_care=true', self.parent).json()
+        self.assertEqual(refresh['care'], today)
+        diary = self.request('GET', family + '/posts?kind=diary', self.parent).json()['routine']
+        self.assertEqual(diary['entries'][0]['details']['rest'], 'Quiet rest')
+        profile = self.request('GET', family + '/profile', self.parent).json()
+        self.assertEqual(profile['attendance']['details']['arrival'], '08:45')
+        self.assertEqual(profile['family_profile'], {'allergies': 'Peanuts', 'cubby': '12'})
+
+        post = {'class_id': self.classroom, 'student_id': self.child, 'kind': 'homework',
+                'title': 'Class activity', 'body': 'Find three colours.'}
+        self.request('POST', '/parents/posts', self.teacher, post, code=201)
+        posted = self.request('GET', f'/teachers/classes/{self.classroom}/posts?kind=homework', self.teacher).json()
+        self.assertEqual(posted['posts'][0]['student_name'], 'Fixture Child')
+        self.assertEqual(self.request('GET', family + '/posts?kind=homework', self.parent).json()['posts'][0]['title'],
+                         'Class activity')

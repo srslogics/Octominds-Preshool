@@ -28,6 +28,21 @@ export function renderFamilyFeed({ route, feed, student, preview, acknowledgment
     </article>`;
   };
 
+  const routineCard = ({ school_day, details }) => {
+    const values = [
+      ["Attendance", { present: "Present", late: "Late", absent: "Absent" }[details.attendance]],
+      ["Arrival", details.arrival], ["Departure", details.departure],
+      ["Arrival mood", details.mood], ["Lunch & nutrition", details.lunch], ["Rest or nap", details.rest],
+      ["Water intake", details.water], ["Toilet routine", details.toilet], ["Pickup instructions", details.pickup_note],
+    ].filter(([, value]) => value);
+    if (!values.length && !details.note) return "";
+    return `<article class="family-card diary-nutrition">
+      <header><h2>${mark("📋")} Attendance &amp; daily care</h2><time datetime="${esc(school_day)}">${esc(formatDay(school_day))}</time></header>
+      ${values.length ? `<dl>${values.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>` : ""}
+      ${details.note ? `<p class="feed-copy"><strong>Note from school</strong> · ${esc(details.note)}</p>` : ""}
+    </article>`;
+  };
+
   const learningCard = (post, index) => {
     const design = sample(post);
     if (design?.rhyme) return `<article class="family-card learning-rhyme">
@@ -70,11 +85,14 @@ export function renderFamilyFeed({ route, feed, student, preview, acknowledgment
     const priority = (post) => sample(post)?.urgent ? 2 : Number(post.kind === "event");
     entries.sort((a, b) => priority(b) - priority(a));
   }
-  return `<div class="toolbar family-feed-toolbar"><span class="count">${feed.total} ${feed.total === 1 ? "update" : "updates"} for ${esc(student.full_name)}</span>
+  const routine = route === "diary" ? feed.routine : null;
+  const count = feed.total + (routine?.total || 0);
+  const cards = [routine?.entries.map(routineCard).join(""), ...entries.map(renderCard)].join("");
+  return `<div class="toolbar family-feed-toolbar"><span class="count">${count} ${count === 1 ? "update" : "updates"} for ${esc(student.full_name)}</span>
     <span class="spacer"></span>${student.can_publish ? '<button type="button" class="primary" data-edit="post">Share an update</button>' : ""}
     <button type="button" data-refresh class="secondary" aria-label="Refresh updates">Refresh</button>
   </div>
-  <div class="family-feed">${entries.map(renderCard).join("") || empty(route, "Nothing shared here yet.",
+  <div class="family-feed">${cards || empty(route, "Nothing shared here yet.",
     route === "homework" ? "When your teacher shares an activity, you’ll find it here." : "Updates from your school team will appear here.")}</div>
-  ${pagination(feed)}`;
+  ${pagination({ ...feed, total: Math.max(feed.total, routine?.total || 0) })}`;
 }

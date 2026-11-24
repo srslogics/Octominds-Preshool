@@ -2,6 +2,7 @@
 from fastapi import HTTPException
 
 from ..auth import mobile_from_login, mobile_login
+from . import teaching
 from .access import forbidden, invalid
 from .db import now
 
@@ -34,22 +35,24 @@ def scoped_children(access, class_id=None):
 
 
 
-def workspace(access, p_today_month=None):
+def workspace(access, p_today_month=None, p_staff_only=False):
     db = access.db
     classes = []
     if access.class_ids:
         slots = ','.join('?' for _ in access.class_ids)
-        classes = db.all(f"""select c.id,c.branch_id,trim(c.name||' '||c.section) name,b.name center_name,y.name year_name
+        classes = db.all(f"""select c.id,c.branch_id,trim(c.name||' '||c.section) name,b.name center_name,y.name year_name,b.timezone
             from school_classes c join branches b on b.id=c.branch_id join academic_years y on y.id=c.academic_year_id
             where c.id in ({slots}) order by b.name,c.name,c.section""", access.class_ids)
         for classroom in classes:
             classroom['can_manage'] = access.manage(classroom['branch_id'])
     students = scoped_children(access)
+    if p_staff_only:
+        students = [student for student in students if access.teach(student['class_id']) and student['is_active']]
     for child in students:
         child.update(can_manage=access.manage(child['branch_id']), can_publish=access.teach(child['class_id']),
                      relationship=access.guardian_links.get(child['id']))
     guardians, accounts = [], []
-    if access.managed_branches:
+    if not p_staff_only and access.managed_branches:
         slots = ','.join('?' for _ in access.managed_branches)
         guardians = db.all(f"""select g.* from parent_guardians g join parent_students s on s.id=g.student_id
                                where s.branch_id in ({slots})""", access.managed_branches)
@@ -67,6 +70,7 @@ def workspace(access, p_today_month=None):
             'student_id': child['id'], 'month': p_today_month,
             'posts': recent_posts(access, child, limit=3),
             'calendar': child_calendar(access.db, child, p_today_month),
+            'care': teaching.today(access, child),
         }
     return result
 
@@ -85,8 +89,11 @@ def child_profile(access, p_student):
           )
         order by p.full_name
         """, (child['class_id'],)) if access.class_open(child['class_id']) else []
+    family_profile = teaching.profile(access.db, child['id'])
     return {'team': [{**teacher, 'role': 'Class teacher'} for teacher in teachers],
-            'office_phone': access.branches[child['branch_id']]['phone']}
+            'office_phone': access.branches[child['branch_id']]['phone'],
+            'family_profile': family_profile['details'] if family_profile else {},
+            'attendance': teaching.daily(access.db, child['id'], teaching.school_day(access, child))}
 
 
 def enrollment_students(access):
@@ -214,7 +221,10 @@ def unpublish(access, p_post):
 def feed(access, p_student, p_kind='all', p_page=1):
     child = require_child(access, p_student)
     posts, total = recent_posts(access, child, p_kind, 20, (p_page - 1) * 20, include_total=True)
-    return {'posts': posts, 'total': total, 'page': p_page, 'page_size': 20}
+    result = {'posts': posts, 'total': total, 'page': p_page, 'page_size': 20}
+    if p_kind == 'diary':
+        result['routine'] = teaching.diary(access, child, p_page)
+    return result
 
 
 def recent_posts(access, child, kind='all', limit=20, offset=0, *, include_total=False):
@@ -251,9 +261,12 @@ def send_message(access, p_student, p_body):
     return {'id': item['id']}
 
 
-def calendar(access, p_student, p_month, p_include_next_month=False):
+def calendar(access, p_student, p_month, p_include_next_month=False, p_include_care=False):
     child = require_child(access, p_student)
-    return child_calendar(access.db, child, p_month, p_include_next_month)
+    result = child_calendar(access.db, child, p_month, p_include_next_month)
+    if p_include_care:
+        result['care'] = teaching.today(access, child)
+    return result
 
 
 def child_calendar(db, child, month, include_next_month=False):

@@ -69,8 +69,8 @@ def gallery(student_id: UUID, user: User, repo: Repo, page: int = Query(1, ge=1,
 
 
 @router.get('/gallery/staff')
-def staff_albums(user: User, repo: Repo, page: int = Query(1, ge=1, le=10000)):
-    return repo.request('POST', '/rpc/parents_staff_albums', data={'p_page': page})
+def staff_albums(user: User, repo: Repo, page: int = Query(1, ge=1, le=10000), class_id: UUID | None = None):
+    return repo.request('POST', '/rpc/parents_staff_albums', data={'p_page': page, 'p_class': str(class_id) if class_id else None})
 
 
 @router.get('/albums/{album_id}')

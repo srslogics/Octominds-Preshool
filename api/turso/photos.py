@@ -43,7 +43,7 @@ def create_album(access, p_data):
     return album
 
 
-def gallery(access, p_student=None, p_page=1):
+def gallery(access, p_student=None, p_page=1, p_class=None):
     child = require_child(access,p_student) if p_student else None
     db = access.db
     if child:
@@ -51,10 +51,13 @@ def gallery(access, p_student=None, p_page=1):
             and status<>'withdrawn' order by taken_on desc,id desc""", (child['class_id'],p_student))
         albums = [a for a in albums if a['status']=='published' or manage(access,a)]
     else:
+        if p_class and not access.teach(p_class):
+            forbidden('Access is limited to the classes you teach or manage.')
         albums = db.all("""select a.*,trim(c.name||' '||c.section) class_name,s.full_name student_name
             from parent_albums a join school_classes c on c.id=a.class_id
             left join parent_students s on s.id=a.student_id
-            where a.status<>'withdrawn' order by a.taken_on desc,a.id desc""")
+            where a.status<>'withdrawn' and (? is null or a.class_id=?)
+            order by a.taken_on desc,a.id desc""", (p_class, p_class))
         albums = [a for a in albums if manage(access,a)]
     items = []
     for album in albums[(p_page-1)*12:p_page*12]:

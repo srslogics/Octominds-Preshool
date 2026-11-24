@@ -14,6 +14,7 @@ from fastapi import HTTPException
 
 SCHEMA = Path(__file__).with_name('schema.sql')
 FAMILY_ENROLLMENT_SCHEMA = SCHEMA.with_name('family_enrollment.sql')
+TEACHER_RECORDS_SCHEMA = SCHEMA.with_name('teacher_records.sql')
 identifier = re.compile(r'[a-z_][a-z0-9_]*\Z')
 logger = logging.getLogger(__name__)
 
@@ -153,9 +154,9 @@ def initialize(settings, *, bootstrap=True):
         if has_schema:
             if db.scalar('select max(version) from app_schema') != 1:
                 raise RuntimeError('Unexpected schema version')
-            scripts = [FAMILY_ENROLLMENT_SCHEMA]
+            scripts = [FAMILY_ENROLLMENT_SCHEMA, TEACHER_RECORDS_SCHEMA]
         elif bootstrap:
-            scripts = [SCHEMA, FAMILY_ENROLLMENT_SCHEMA]
+            scripts = [SCHEMA, FAMILY_ENROLLMENT_SCHEMA, TEACHER_RECORDS_SCHEMA]
         else:
             return
         for script in scripts:

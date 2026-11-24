@@ -85,9 +85,11 @@ def child_profile(student_id: UUID, user: User, repo: Repo):
 
 
 @router.get('/children/{student_id}/calendar')
-def calendar(student_id: UUID, month: date, user: User, repo: Repo, include_next_month: bool = False):
+def calendar(student_id: UUID, month: date, user: User, repo: Repo,
+             include_next_month: bool = False, include_care: bool = False):
     return repo.request('POST', '/rpc/parents_calendar', data={
-        'p_student': str(student_id), 'p_month': month.isoformat(), 'p_include_next_month': include_next_month})
+        'p_student': str(student_id), 'p_month': month.isoformat(),
+        'p_include_next_month': include_next_month, 'p_include_care': include_care})
 
 
 @router.get('/children/{student_id}/messages')

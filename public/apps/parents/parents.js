@@ -1,10 +1,12 @@
-import { renderFamilyFeed } from "./parents-feeds.js?v=1";
+import { createTeacherWorkspace, teacherPages } from "../teachers/teachers.js?v=1";
+import { renderFamilyFeed } from "./parents-feeds.js?v=2";
 import { createSchoolCalendar } from "./parents-calendar.js?v=1";
-import { createGallery } from "./parents-gallery.js?v=6";
+import { createGallery } from "./parents-gallery.js?v=7";
 const $ = (s) => document.querySelector(s);
 const cfg = window.OCTOMINDS_CONFIG || {};
 const sessions = window.OctomindsSession;
-const previewRequested = new URLSearchParams(location.search).get("preview") === "1";
+const teacherPortal = document.body.dataset.portal === "teacher";
+const previewRequested = !teacherPortal && new URLSearchParams(location.search).get("preview") === "1";
 let preview = null;
 const esc = (v) =>
   String(v ?? "").replace(
@@ -80,6 +82,8 @@ const pages = {
     "Manage family connections and share updates or photos.",
   ],
 };
+if (teacherPortal) Object.assign(pages, teacherPages);
+let teacherClass = "";
 let session = null,
   user = null,
   workspace = null,
@@ -92,8 +96,9 @@ let session = null,
   refreshing = null,
   toastTimer;
 const route = () => {
-  const r = location.hash.replace(/^#\/?/, "") || "today";
-  return Object.hasOwn(pages, r) ? r : "today";
+  const fallback = teacherPortal ? "classroom" : "today";
+  const r = location.hash.replace(/^#\/?/, "") || fallback;
+  return Object.hasOwn(teacherPortal ? teacherPages : pages, r) ? r : fallback;
 };
 const child = () => workspace?.students.find((s) => s.id === selected);
 const firstName = (name) => (name || "").trim().split(/\s+/)[0];
@@ -143,6 +148,8 @@ function setPasswordVisibility(visible) {
 function clearSession() {
   calendarView.reset();
   sampleAcknowledgments.clear();
+  teacherDesk?.reset();
+  teacherClass = "";
   gallery.reset();
   epoch++;
   generation++;
@@ -157,6 +164,7 @@ function clearSession() {
   $("#auth").hidden = false;
   $("#content").replaceChildren();
   $("#childSelect").replaceChildren();
+  $("#teacherClass")?.replaceChildren();
   $("#accountName").textContent = "";
   $("#loginForm").reset();
   setPasswordVisibility(false);
@@ -238,7 +246,8 @@ async function api(
     await refresh();
   if (version !== epoch) throw Error("Your session changed.");
   const token = session.access_token;
-  const response = await fetch(`/api/v1/parents${path}`, {
+  const prefix = path.startsWith("/teachers/") ? "/api/v1" : "/api/v1/parents";
+  const response = await fetch(prefix + path, {
     method,
     cache: "no-store",
     headers: {
@@ -281,18 +290,25 @@ async function enter() {
   if (!preview) {
     const params = new URLSearchParams({ include_account: "true" });
     if (route() === "today") params.set("today_month", firstDay());
-    fresh = await api(`/workspace?${params}`);
+    fresh = await api(teacherPortal ? "/teachers/workspace" : `/workspace?${params}`);
   }
   if (version !== epoch) return;
   user = preview ? preview.user() : fresh.account;
   $("#auth").hidden = true;
   $("#portal").hidden = false;
-  $("#previewBanner").hidden = !preview;
+  if (!teacherPortal) $("#previewBanner").hidden = !preview;
   $("#accountName").textContent = user.full_name || "Your account";
   await loadWorkspace(fresh);
 }
+const teacherNav = [
+  ["classroom", "home", "Classroom"], ["daily-care", "check", "Attendance & care", "Attendance"],
+  ["diary", "diary", "Daily diary", "Diary"], ["homework", "homework", "Home learning", "Learning"],
+  ["updates", "updates", "School updates", "Updates"], ["class-calendar", "calendar", "Class events", "Events"],
+  ["school-albums", "gallery", "Class albums", "Albums"], ["messages", "messages", "Family conversations", "Messages"],
+  ["meal-plan", "homework", "Meal plan"], ["care-profile", "child", "Child profile", "Profiles"],
+];
 function navigation() {
-  const items = [
+  const items = teacherPortal ? teacherNav : [
     ["today", "home", "Today"],
     ["updates", "updates", "School updates", "Updates"],
     ["homework", "homework", "Home learning", "Learning"],
@@ -302,9 +318,9 @@ function navigation() {
     ["messages", "messages", "Ask the school", "Messages"],
     ["child", "child", "My child"],
   ];
-  if (workspace.classes.length || workspace.students.some((s) => s.can_manage))
+  if (!teacherPortal && (workspace.classes.length || workspace.students.some((s) => s.can_manage)))
     items.push(["manage", "manage", "School desk"]);
-  const current = route() === "school-albums" ? "manage" : route();
+  const current = !teacherPortal && route() === "school-albums" ? "manage" : route();
   $("#navigation").innerHTML = items
     .map(
       ([r, i, name, shortName]) =>
@@ -319,25 +335,30 @@ async function loadWorkspace(initialData) {
   const version = ++generation;
   $("#content").innerHTML = loading();
   try {
-    const fresh = initialData ?? await api("/workspace");
+    const fresh = initialData ?? await api(teacherPortal ? "/teachers/workspace" : "/workspace");
     if (version !== generation || !user) return;
     workspace = fresh;
-    if (!workspace.students.some((s) => s.id === selected))
-      selected =
-        workspace.students.find((s) => s.is_active)?.id ||
-        workspace.students[0]?.id ||
-        "";
-    $("#childSelect").innerHTML = workspace.students
-      .map(
-        (s) =>
-          `<option value="${esc(s.id)}">${esc(s.full_name)}${s.is_active ? "" : " (inactive)"}</option>`,
-      )
-      .join("");
-    $("#childSelect").value = selected;
+    if (teacherPortal) {
+      const { classes } = workspace;
+      if (!classes.some(item => item.id === teacherClass)) teacherClass = classes[0]?.id || "";
+      const input = $("#teacherClass");
+      input.innerHTML = options(classes, item => `${item.name} · ${item.center_name} · ${item.year_name}`, teacherClass);
+      $("#teacherClassPicker").hidden = !classes.length;
+    }
+    populateChildPicker();
     await render(initialData?.today);
   } catch (error) {
     if (version === generation && user) showError(error);
   }
+}
+const teacherRoster = () => workspace.students.filter(student => student.class_id === teacherClass);
+function populateChildPicker() {
+  const students = teacherPortal ? teacherRoster() : workspace.students;
+  if (!students.some((s) => s.id === selected))
+    selected = students.find((s) => s.is_active)?.id || students[0]?.id || "";
+  $("#childSelect").innerHTML = students.map((s) =>
+    `<option value="${esc(s.id)}">${esc(s.full_name)}${s.is_active ? "" : " (inactive)"}</option>`).join("");
+  $("#childSelect").value = selected;
 }
 function showError(error) {
   $("#content").innerHTML =
@@ -350,10 +371,11 @@ function pagination(result) {
 }
 const sampleAcknowledgments = new Set();
 const sectionSymbols = { updates: "📣", homework: "🧩", diary: "📖", gallery: "📸", messages: "💬" };
+const teacherDesk = teacherPortal ? createTeacherWorkspace({ api, esc, go, toast, render, empty, pagination, stamp }) : null;
 const calendarView = createSchoolCalendar({ api, esc, icon, isoDate, parseDay, empty, notify: toast });
 const gallery = createGallery({
   api,
-  context: () => ({ student: child(), workspace, epoch, generation, preview: Boolean(preview) }),
+  context: () => ({ student: child(), workspace, epoch, generation, preview: Boolean(preview), classId: teacherClass }),
   esc,
   icon,
   formatDay,
@@ -373,16 +395,18 @@ async function render(initialToday) {
   const calendarExport = $("#calendarExport");
   calendarExport.hidden = r !== "calendar" || !s;
   calendarExport.disabled = true;
-  const showsChild = Boolean(s) && r !== "manage" && r !== "school-albums";
-  const canSwitch = showsChild && workspace.students.length > 1;
+  const showsChild = Boolean(s) && (teacherPortal
+    ? ["daily-care", "care-profile", "messages"].includes(r)
+    : r !== "manage" && r !== "school-albums");
+  const canSwitch = showsChild && (teacherPortal ? teacherRoster() : workspace.students).length > 1;
   const portal = $("#portal");
   portal.dataset.route = r;
   portal.classList.toggle("view-child", isProfile);
   portal.classList.toggle("view-today", isToday);
   portal.classList.toggle("view-section", isSection);
-  $("#childBack").hidden = r === "today";
-  $("#childBack").href = go(r === "school-albums" ? "manage" : "today");
-  $("#childBackLabel").textContent = r === "school-albums" ? "School desk" : "Today";
+  $("#childBack").hidden = r === "today" || r === "classroom";
+  $("#childBack").href = go(teacherPortal ? "classroom" : r === "school-albums" ? "manage" : "today");
+  $("#childBackLabel").textContent = teacherPortal ? "Classroom" : r === "school-albums" ? "School desk" : "Today";
   const sectionIcon = sectionSymbols[r];
   $("#childBrand").hidden = Boolean(sectionIcon);
   $("#sectionSymbol").hidden = !sectionIcon;
@@ -407,19 +431,23 @@ async function render(initialToday) {
   $("#content").innerHTML = loading();
   try {
     let html = "";
-    if (r === "manage") {
+    if (teacherDesk && !["school-albums", "messages"].includes(r)) {
+      html = await teacherDesk.screen(r, workspace.classes.find(c => c.id === teacherClass), s, teacherRoster(), page);
+    } else if (r === "manage") {
       html = manageScreen();
     } else if (r === "school-albums") {
       html =
         workspace.classes.length ||
-        workspace.students.some((student) => student.can_manage)
+        (!teacherPortal && workspace.students.some((student) => student.can_manage))
           ? await gallery.screen(null, page)
           : empty(
               "gallery",
-              "School albums are managed by staff.",
-              "Open the photo gallery to view albums shared with your family.",
-              `<a class="button secondary" href="${go("gallery")}">Open photo gallery</a>`,
+              teacherPortal ? "No classes assigned yet" : "School albums are managed by staff.",
+              teacherPortal ? "Ask your school administrator to assign a class to your account." : "Open the photo gallery to view albums shared with your family.",
+              teacherPortal ? "" : `<a class="button secondary" href="${go("gallery")}">Open photo gallery</a>`,
             );
+    } else if (!s && teacherPortal) {
+      html = empty("messages", "No student selected", "Choose a class with enrolled students to open a family conversation.");
     } else if (!s) {
       html = empty(
         "child",
@@ -445,9 +473,9 @@ async function render(initialToday) {
         ? [initialToday, initialToday.calendar]
         : await Promise.all([
             api(`/children/${s.id}/posts`),
-            api(`/children/${s.id}/calendar?month=${todayMonth}`),
+            api(`/children/${s.id}/calendar?month=${todayMonth}&include_care=true`),
           ]);
-      html = todayScreen(s, feed, calendar);
+      html = todayScreen(s, feed, calendar, feed.care || calendar.care);
     } else {
       const kind = r === "updates" ? "circulars" : r;
       const feed = await api(
@@ -497,9 +525,33 @@ function todayMoment(post) {
   </article>`;
 }
 
-function todayScreen(student, feed, calendar) {
+function schoolTime(time) {
+  if (!time) return "";
+  const [hour, minute] = time.split(":").map(Number);
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
+    .format(new Date(2000, 0, 1, hour, minute));
+}
+
+function attendanceLabel(details = {}) {
+  if (details.attendance === "absent") return "Absent";
+  if (details.departure) return `Checked out at ${schoolTime(details.departure)}`;
+  if (details.attendance === "late") return details.arrival ? `Arrived late at ${schoolTime(details.arrival)}` : "Marked late";
+  if (details.attendance === "present") return details.arrival ? `Checked in at ${schoolTime(details.arrival)}` : "Present";
+  return "";
+}
+
+function todayScreen(student, feed, calendar, care) {
   const sample = preview ? student.today : null;
-  const today = isoDate(new Date());
+  const today = care?.day || isoDate(new Date());
+  const daily = care?.daily?.details || {};
+  const meals = [["Breakfast", "breakfast"], ["Lunch", "lunch"], ["Snack", "snack"]]
+    .map(([label, field]) => [label, care?.meals?.details?.[field]]).filter(([, value]) => value);
+  const routines = sample?.routines || [
+    ["🥪", "Lunch & nutrition", "", daily.lunch, "mint"],
+    ["😴", "Rest time", "", daily.rest, "plum"],
+    ["💧", "Water & toilet", "", [daily.water && `Water: ${daily.water}`, daily.toilet && `Toilet: ${daily.toilet}`].filter(Boolean).join(" · "), "blue"],
+  ].filter(([, , , description]) => description);
+  const attendance = [attendanceLabel(daily), daily.mood].filter(Boolean).join(" · ");
   const recent = feed.posts.find((post) => post.kind === "diary" && isoDate(new Date(post.created_at)) === today);
   const upcoming = [...calendar.events, ...calendar.holidays.map((holiday) => ({ ...holiday, event_date: holiday.starts_on }))]
     .filter((event) => (event.ends_on || event.event_date) >= today)
@@ -519,7 +571,7 @@ function todayScreen(student, feed, calendar) {
       <div class="today-hero-intro">
         <div><span class="today-location">${profileIcon("📍")} ${esc(sample?.group || student.class_name)} · ${esc(student.center_name)}</span>
           <h2 id="today-overview">${esc(heroTitle)}</h2>
-          <p>${esc(sample?.arrival || (recent ? "There’s a new note in the Daily Diary today." : "See notes and moments shared by your school team."))}</p>
+          <p>${esc(sample?.arrival || attendance || (recent ? "There’s a new note in the Daily Diary today." : "See notes and moments shared by your school team."))}</p>
         </div>
         <div class="today-hero-art" aria-hidden="true">
           <span class="today-sun">☀</span>
@@ -532,7 +584,7 @@ function todayScreen(student, feed, calendar) {
         <span class="today-pill plum">${esc(sample.current.remaining)}</span>
       </div>` : ""}
       <div class="today-hero-footer">
-        ${sample?.pickup ? `<a class="today-pickup" href="${go("child")}">${profileIcon("🛡️")} Gate pickup <strong>${esc(sample.pickup)}</strong></a>` : ""}
+        ${sample?.pickup ? `<a class="today-pickup" href="${go("child")}">${profileIcon("🛡️")} Gate pickup <strong>${esc(sample.pickup)}</strong></a>` : daily.pickup_note ? `<p class="today-pickup"><strong>Pickup instructions</strong> ${esc(daily.pickup_note)}</p>` : ""}
         <a class="button primary" href="${go("diary")}">${profileIcon("📖")} Open full daily diary <span aria-hidden="true">→</span></a>
       </div>
     </section>
@@ -540,10 +592,11 @@ function todayScreen(student, feed, calendar) {
       <div class="today-section-heading"><h2 id="today-care">${profileIcon("🥣")} Today’s Care &amp; Routine Log</h2>
         ${sample?.updated ? `<span class="today-pill mint">${esc(sample.updated)}</span>` : ""}
       </div>
-      ${sample?.routines ? `<div class="today-routine-grid">${sample.routines.map(([symbol, title, status, description, tone]) =>
-        `<article class="today-card today-routine"><div><span>${profileIcon(symbol)}</span><span class="today-pill ${esc(tone)}">${esc(status)}</span></div>
+      ${routines.length ? `<div class="today-routine-grid">${routines.map(([symbol, title, status, description, tone]) =>
+        `<article class="today-card today-routine"><div><span>${profileIcon(symbol)}</span>${status ? `<span class="today-pill ${esc(tone)}">${esc(status)}</span>` : ""}</div>
           <h3>${esc(title)}</h3><p>${esc(description)}</p></article>`).join("")}</div>` :
-        `<div class="today-card today-routine-note"><h3>${esc(recent?.title || "Daily care notes")}</h3><p>${esc(recent?.body || "Care and routine updates appear in the Daily Diary when your school shares them.")}</p></div>`}
+        daily.note ? "" : `<div class="today-card today-routine-note"><h3>${esc(recent?.title || "Daily care notes")}</h3><p>${esc(recent?.body || "Care and routine updates appear in the Daily Diary when your school shares them.")}</p></div>`}
+      ${daily.note ? `<article class="today-card today-routine-note"><h3>Note from school</h3><p>${esc(daily.note)}</p></article>` : ""}
     </section>
     <section aria-labelledby="today-moments">
       <div class="today-section-heading"><h2 id="today-moments">${profileIcon("🎨")} Little Moments Captured</h2><a href="${go("updates")}">School updates →</a></div>
@@ -562,8 +615,9 @@ function todayScreen(student, feed, calendar) {
           ${sample?.menu ? '<span class="today-pill mint">Sample menu</span>' : ""}
         </div>
         ${sample?.menu ? `<h3>Fresh from the school kitchen</h3><p>${esc(sample.menu.snack)}<br>${esc(sample.menu.evening)}</p>
-          <details><summary>Full menu plan</summary><p>${esc(sample.menu.lunch)}</p></details>` :
-          `<p>Contact your school for this week’s meal plan.</p>${draftLink}`}
+          <details><summary>Full menu plan</summary><p>${esc(sample.menu.lunch)}</p></details>` : meals.length
+          ? meals.map(([label, value]) => `<p><strong>${label}</strong> · ${esc(value)}</p>`).join("")
+          : `<p>Contact your school for this week’s meal plan.</p>${draftLink}`}
       </section>
     </div>
     <nav class="today-card today-actions" aria-label="Quick actions">
@@ -579,48 +633,54 @@ const profileLink = (route, label, style = "") =>
 
 function profileScreen(s, profile = {}) {
   const { team = [], office_phone: phone } = profile;
-  const sample = preview ? profile : {};
-  const family = sample.pickups || [{
+  const display = preview ? profile : (profile.family_profile || {});
+  const care = preview ? display.care || [] : [
+    ["Allergies", "❤️", display.allergies], ["Diet plan", "🥦", display.diet],
+    ["Blood group", "🩸", display.blood_group], ["Nap routine", "😴", display.nap],
+  ].filter(([, , value]) => value);
+  const milestones = preview ? display.milestones || [] : (display.milestones || "")
+    .split("\n").map(name => name.trim()).filter(Boolean).map(name => ["⭐", name]);
+  const family = display.pickups || [{
     full_name: user.full_name,
     relationship: s.relationship || "Your account",
   }];
-  const status = sample.check_in || (s.is_active ? "Enrollment active" : "Enrollment inactive");
+  const status = display.check_in || attendanceLabel(profile.attendance?.details) || (s.is_active ? "Enrollment active" : "Enrollment inactive");
   const officeNumber = phone?.replace(/[\s().-]/g, "");
   const contact = /^\+?[0-9]{6,15}$/.test(officeNumber || "")
     ? `tel:${officeNumber}` : go("messages");
   const officeTitle = s.center_name ? `Contact ${esc(s.center_name)} Center Office` : "Contact the school office";
-  const familyTitle = sample.pickups ? "Authorized Pickups" : "Family Access";
+  const familyTitle = display.pickups ? "Authorized Pickups" : "Family Access";
   return `<div class="child-profile">
     <section class="child-card child-hero" aria-labelledby="child-name">
       <div class="child-identity">
         <div class="child-portrait" aria-hidden="true">
-          <span>${sample.avatar || esc(initials(s.full_name))}</span>
+          <span>${display.avatar || esc(initials(s.full_name))}</span>
           <img src="/assets/octominds-icon-192.png" width="28" height="28" alt="">
         </div>
         <div class="child-identity-details">
           <div class="child-name-line"><h2 id="child-name">${esc(s.full_name)}</h2>
-            ${sample.nickname ? `<span class="child-nickname">“${esc(sample.nickname)}” ${profileIcon("⭐")}</span>` : ""}
+            ${display.nickname ? `<span class="child-nickname">“${esc(display.nickname)}” ${profileIcon("⭐")}</span>` : ""}
           </div>
-          <p class="child-class">${profileIcon("🚀")} ${esc(sample.class_label || s.class_name)}</p>
+          <p class="child-class">${profileIcon("🚀")} ${esc(display.class_label || s.class_name)}</p>
           <div class="child-tags">
             <span>${profileIcon("📍")} ${esc(s.center_name)}</span>
-            ${sample.cubby ? `<span class="child-cubby">${profileIcon("🐬")} ${esc(sample.cubby)}</span>` : ""}
+            ${display.cubby ? `<span class="child-cubby">${profileIcon("🐬")} ${esc(display.cubby)}</span>` : ""}
           </div>
         </div>
       </div>
       <div class="child-summary">
         <span class="child-status ${s.is_active ? "" : "inactive"}"><i></i>${esc(status)}</span>
-        <span>${profileIcon(sample.age ? "🎂" : "📅")} ${esc(sample.age || s.year_name)}</span>
+        <span>${profileIcon(display.age ? "🎂" : "📅")} ${esc(display.age || s.year_name)}</span>
       </div>
     </section>
     <section class="child-card child-green" aria-labelledby="child-office">
-      <span class="child-green-icon">${profileIcon(sample.pickup_code ? "🛡️" : "💬")}</span>
+      <span class="child-green-icon">${profileIcon(display.pickup_code ? "🛡️" : "💬")}</span>
       <div>
-        <h2 id="child-office">${sample.pickup_code ? 'Gate Pickup Pass <span class="child-pass-status">Sample</span>' : "School Office"}</h2>
-        <p>${sample.pickup_code ? "Example pickup at 1:30 PM" : "Get help with pickup or your child’s school day."}</p>
+        <h2 id="child-office">${display.pickup_code ? 'Gate Pickup Pass <span class="child-pass-status">Sample</span>' : "School Office"}</h2>
+        <p>${display.pickup_code ? "Example pickup at 1:30 PM" : "Get help with pickup or your child’s school day."}</p>
       </div>
-      ${sample.pickup_code
-        ? `<span class="profile-button pickup-code">${esc(sample.pickup_code)}</span>`
+      ${display.pickup_code
+        ? `<span class="profile-button pickup-code">${esc(display.pickup_code)}</span>`
         : `<a class="profile-button" href="${contact}">${contact.startsWith("tel:") ? "Call school" : "Message school"}</a>`}
     </section>
     <section class="child-team" aria-labelledby="child-team">
@@ -635,7 +695,7 @@ function profileScreen(s, profile = {}) {
     </section>
     <section class="child-card child-section" aria-labelledby="child-care">
       <div class="child-section-title"><h2 id="child-care">${profileIcon("❤️")} Care &amp; Well-being</h2></div>
-      ${sample.care ? `<dl class="child-care-grid">${sample.care.map(([label, emoji, value]) =>
+      ${care.length ? `<dl class="child-care-grid">${care.map(([label, emoji, value]) =>
         `<div><dt>${esc(label)}</dt><dd>${profileIcon(emoji)} ${esc(value)}</dd></div>`).join("")}</dl>`
       : `<p class="child-card-copy">Ask the school about allergies, meals or daily care routines.</p>${profileLink("messages", "Ask about care", "profile-inline")}`}
     </section>
@@ -646,12 +706,12 @@ function profileScreen(s, profile = {}) {
       <ul class="child-family-list">${family.map((guardian) => `<li>
         <span class="child-person-avatar" aria-hidden="true">${esc(initials(guardian.full_name))}</span>
         <div><h3>${esc(guardian.full_name)}</h3><p>${esc(guardian.relationship)}</p></div>
-        ${sample.pickups ? '<span class="child-pickup-badge">Example</span>' : ""}
+        ${display.pickups ? '<span class="child-pickup-badge">Example</span>' : ""}
       </li>`).join("")}</ul>
     </section>
     <section class="child-card child-section" aria-labelledby="child-milestones">
-      <div class="child-section-title"><h2 id="child-milestones">${profileIcon("🏆")} Little Milestones${sample.milestones ? " Unlocked" : ""}</h2></div>
-      ${sample.milestones ? `<ul class="child-milestones">${sample.milestones.map(([emoji, name]) =>
+      <div class="child-section-title"><h2 id="child-milestones">${profileIcon("🏆")} Little Milestones${milestones.length ? " Unlocked" : ""}</h2></div>
+      ${milestones.length ? `<ul class="child-milestones">${milestones.map(([emoji, name]) =>
         `<li>${profileIcon(emoji)}<strong>${esc(name)}</strong></li>`).join("")}</ul>`
       : `<p class="child-card-copy">Explore the daily diary for updates from your child’s class.</p>${profileLink("diary", "Open daily diary", "profile-inline")}`}
     </section>
@@ -680,7 +740,8 @@ function setMessageTopic(form, topic) {
 async function messageScreen(s) {
   const result = await api(`/children/${s.id}/messages?page=${page}`);
   return `<div class="school-conversation">
-    ${s.is_active ? `<div class="message-topics" role="group" aria-label="Message topic">
+    ${teacherPortal ? `<div class="toolbar"><strong>${esc(s.full_name)}</strong><span class="spacer"></span>
+      <button type="button" data-refresh class="secondary">Refresh</button></div>` : s.is_active ? `<div class="message-topics" role="group" aria-label="Message topic">
       ${Object.entries(messageTopics).map(([key, [label, emoji]]) => `<button type="button" data-message-topic="${key}" aria-pressed="${key === "teacher"}">${profileIcon(emoji)} ${label}</button>`).join("")}
     </div>` : ""}
     <details class="conversation-access"><summary>Who can read this conversation?</summary><p>Linked guardians and the assigned school team share this thread. For anything urgent, contact your school directly.</p></details>
@@ -692,11 +753,11 @@ async function messageScreen(s) {
       </div>
     </article>`).join("") || empty("messages", "Start a conversation.", "Ask about their day, share a little update, or let the school know what’s on your mind.")}</div>
     ${s.is_active ? `<form id="messageForm" class="message-form" data-topic="teacher">
-      <div class="message-templates" role="group" aria-label="Quick message drafts">
+      ${teacherPortal ? "" : `<div class="message-templates" role="group" aria-label="Quick message drafts">
         ${Object.entries(messageTemplates).map(([key, [emoji, label]]) => `<button type="button" data-message-template="${key}">${profileIcon(emoji)} ${label}</button>`).join("")}
-      </div>
+      </div>`}
       <div class="message-compose"><label for="messageBody" class="sr-only">Your message</label>
-        <textarea id="messageBody" name="body" maxlength="2000" required placeholder="${messageTopics.teacher[2]}" rows="2"></textarea>
+        <textarea id="messageBody" name="body" maxlength="2000" required placeholder="${teacherPortal ? "Write a reply to the family…" : messageTopics.teacher[2]}" rows="2"></textarea>
         <button class="primary" type="submit" aria-label="Send message">${profileIcon("➤")}</button>
       </div>
       <p class="field-error" id="messageError" role="alert"></p>
@@ -714,6 +775,9 @@ function manageScreen() {
       "Your family updates are available from Today.",
     );
   return `<div class="staff-actions">
+    ${!preview && workspace.classes.length ? `<a class="staff-action" href="/teachers">
+      ${icon("manage")}<span><strong>Open Teacher App</strong><small>Manage the class and share family updates.</small></span>
+    </a>` : ""}
     ${workspace.classes.length ? `<button type="button" class="staff-action" data-gallery-upload>
       ${icon("gallery")}<span><strong>Share photos</strong><small>Create a private album for families.</small></span>
     </button>` : ""}
@@ -785,7 +849,7 @@ function openEditor(kind, id) {
   const classes = workspace.classes.filter(
     (c) => kind !== "student" || c.can_manage,
   );
-  const classSelect = `<label>Class<select name="class_id" required ${row ? "disabled" : ""}>${options(classes, (c) => `${c.name} · ${c.center_name} · ${c.year_name}`, row?.class_id || child()?.class_id)}</select></label>`;
+  const classSelect = `<label>Class<select name="class_id" required ${row ? "disabled" : ""}>${options(classes, (c) => `${c.name} · ${c.center_name} · ${c.year_name}`, row?.class_id || (teacherPortal ? teacherClass : child()?.class_id))}</select></label>`;
   let fields = "";
   if (kind === "student") {
     $("#editorTitle").textContent = row
@@ -807,7 +871,7 @@ function openEditor(kind, id) {
     $("#editorTitle").textContent = "Share a little moment";
     $("#editorDescription").textContent =
       "This update will be visible to linked families as soon as you publish it.";
-    fields = `${classSelect}<label>Share with<select name="student_id"></select></label><label>Update type<select name="kind"><option value="notice">School notice</option><option value="homework" ${route() === "homework" ? "selected" : ""}>Home learning</option><option value="diary" ${route() === "diary" ? "selected" : ""}>Daily diary</option><option value="event">Calendar event</option></select></label><label>Title<input name="title" maxlength="160" required></label><label>Message<textarea name="body" maxlength="10000" required></textarea></label><label id="eventDateField" hidden>Event date<input name="event_date" type="date"></label>`;
+    fields = `${classSelect}<label>Share with<select name="student_id"></select></label><label>Update type<select name="kind"><option value="notice">School notice</option><option value="homework" ${route() === "homework" ? "selected" : ""}>Home learning</option><option value="diary" ${route() === "diary" ? "selected" : ""}>Daily diary</option><option value="event" ${route() === "class-calendar" ? "selected" : ""}>Calendar event</option></select></label><label>Title<input name="title" maxlength="160" required></label><label>Message<textarea name="body" maxlength="10000" required></textarea></label><label id="eventDateField" hidden>Event date<input name="event_date" type="date"></label>`;
   }
   $("#editorFields").innerHTML = fields;
   $("#editorForm button[type=submit]").textContent =
@@ -820,7 +884,13 @@ function openEditor(kind, id) {
     updateGuardianAccounts();
     renderGuardianLinks();
   }
-  if (kind === "post") updateAudience();
+  if (kind === "post") {
+    updateAudience();
+    if (route() === "class-calendar") {
+      $("#eventDateField").hidden = false;
+      $("#eventDateField input").required = true;
+    }
+  }
   $("#editor").showModal();
 }
 function renderGuardianLinks() {
@@ -915,7 +985,7 @@ document.addEventListener("submit", async (event) => {
     if (version === epoch && student === selected && route() === "messages") {
       page = 1;
       await render();
-      toast("Message sent to your school conversation.");
+      toast(teacherPortal ? "Message sent to the family conversation." : "Message sent to your school conversation.");
     }
   } catch (error) {
     if (version === epoch && student === selected && $("#messageError"))
@@ -1037,6 +1107,13 @@ document.addEventListener("click", async (event) => {
 $("#editor").addEventListener("cancel", (event) => {
   if ($("#editorForm button[type=submit]").disabled) event.preventDefault();
 });
+$("#teacherClass")?.addEventListener("change", (event) => {
+  teacherClass = event.target.value;
+  teacherDesk.reset();
+  populateChildPicker();
+  page = 1;
+  render();
+});
 $("#childSelect").addEventListener("change", (event) => {
   calendarView.reset();
   messageDraft = null;
@@ -1121,7 +1198,7 @@ window.addEventListener("storage", async (event) => {
     $("#authMessage").textContent = "Signed out.";
   }
 });
-$("#previewRole").addEventListener("change", async (event) => {
+$("#previewRole")?.addEventListener("change", async (event) => {
   gallery.reset();
   epoch++;
   generation++;
@@ -1170,5 +1247,6 @@ window.addEventListener("online", () => {
   restoreWhenOnline = false;
   start();
 });
+if (teacherPortal && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 sessions.protectHistory($("#portal"), () => Boolean(session));
 start();

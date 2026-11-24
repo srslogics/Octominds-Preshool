@@ -86,7 +86,8 @@ export function createGallery({
 
   async function screen(student, page) {
     const c = context();
-    const result = await api(student ? `/children/${student.id}/gallery?page=${page}` : `/gallery/staff?page=${page}`);
+    const filter = c.classId ? `&class_id=${encodeURIComponent(c.classId)}` : "";
+    const result = await api(student ? `/children/${student.id}/gallery?page=${page}` : `/gallery/staff?page=${page}${filter}`);
     if (!current(c)) return "";
     staffView = !student;
     albums = result.albums;
@@ -266,7 +267,7 @@ export function createGallery({
     const form = $("#albumForm");
     form.elements.class_id.innerHTML = c.workspace.classes
       .map((cls) =>
-        option(cls.id, `${cls.name} · ${cls.center_name}`, c.student?.class_id),
+        option(cls.id, `${cls.name} · ${cls.center_name}`, c.classId || c.student?.class_id),
       )
       .join("");
     audience();

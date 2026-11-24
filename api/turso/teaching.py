@@ -9,6 +9,7 @@ from .access import forbidden
 from .db import now
 
 HEALTH_FIELDS = ('allergies', 'diet', 'blood_group')
+ATTENDANCE_FIELDS = {'attendance', 'arrival', 'departure'}
 
 
 def read_record(db, table, where, args):
@@ -22,7 +23,7 @@ def unpack(row):
     return row
 
 
-def save_record(access, table, existing, identifiers, details, version, branch):
+def save_record(access, table, existing, identifiers, details, version, branch, *, class_id=None):
     if version != (existing['version'] if existing else None):
         raise HTTPException(409, 'This record changed. Reload it before saving.')
     values = {'details': details, 'updated_at': now()}
@@ -30,7 +31,13 @@ def save_record(access, table, existing, identifiers, details, version, branch):
         row = access.db.update(table, existing['id'], {**values, 'version': version + 1})
     else:
         row = access.db.insert(table, {**values, **identifiers})
-    access.audit('teachers.record_shared', table, row['id'], branch)
+    metadata = None
+    if table == 'student_daily_records':
+        previous = existing['details'] if existing else {}
+        entered = {field for field, value in details.items() if value and value != previous.get(field)}
+        metadata = {'class_id': class_id, 'attendance': bool(entered & ATTENDANCE_FIELDS),
+                    'care': bool(entered - ATTENDANCE_FIELDS)}
+    access.audit('teachers.record_shared', table, row['id'], branch, metadata)
     return unpack(row)
 
 

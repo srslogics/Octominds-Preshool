@@ -13,7 +13,7 @@ from argon2.exceptions import VerificationError, InvalidHashError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..auth import (MOBILE_LOGIN_SUFFIX, Credentials, Role, mobile_from_login,
+from ..auth import (MOBILE_INVITATION_ROLES, MOBILE_LOGIN_SUFFIX, Credentials, mobile_from_login,
                     mobile_login, normalize_mobile, resolve_account)
 from ..config import Settings, get_settings
 from .access import Access, forbidden, invalid
@@ -199,15 +199,15 @@ def claim_mobile_invitation(body: MobileSignup, settings: Config):
     try:
         with transaction(settings, write=True) as db:
             invitation = valid_invitation(db, body.invitation_token, login)
-            if invitation['role'] != Role.PARENT:
+            if invitation['role'] not in MOBILE_INVITATION_ROLES:
                 forbidden('This invitation is invalid or has expired.')
             if db.scalar('select 1 from accounts where email=?', (login,)):
                 raise HTTPException(409, 'This number already has an account. Choose “Sign in with an existing PIN” to accept.')
             account = db.insert('accounts', {'email': login, 'password_hash': hasher.hash(body.pin),
                                              'email_confirmed_at': now()})
             db.insert('profiles', {'id': account['id'], 'full_name': invitation['full_name'], 'phone': phone})
-            complete_invitation(Access(db, account['id']), invitation)
-            return issue_session(db, account['id'])
+            membership = complete_invitation(Access(db, account['id']), invitation)
+            return {**issue_session(db, account['id']), 'role': membership['role']}
     finally:
         password_workers.release()
 

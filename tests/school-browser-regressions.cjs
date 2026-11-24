@@ -29,6 +29,7 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
   if(r.request().method()==='POST'){
    const body=r.request().postDataJSON();writes.push({path,body});
    if(conflict)return r.fulfill({status:409,json:{detail:'This record changed. Reload before saving.'}});
+   if(path.endsWith('/teacher-assignments'))return r.fulfill({json:{assignments:body.class_ids.map(class_id=>({class_id}))}});
    return r.fulfill({json:{id:'new',token:'a'.repeat(64),version:2}});
   }
   if(path.endsWith('/workspace')){
@@ -63,13 +64,51 @@ const screenshotDir=process.env.TEST_SCREENSHOT_DIR;
  if(screenshotDir){await mkdir(screenshotDir,{recursive:true});await page.screenshot({path:screenshotDir+'/school-classes-desktop.png',fullPage:true});}
  await go('programs');await page.locator('#centerSelect').selectOption('b');assert.ok((await page.locator('#content').innerText()).includes('Kindergarten'));assert.ok(!(await page.locator('#content').innerText()).includes('Learning through play'));pass('center switching filters school records');
  await page.locator('#centerSelect').selectOption('a');await page.locator('[data-action=edit][data-id=p]').click();conflict=true;await page.locator('#editorForm button[type=submit]').click();await page.locator('#formError').filter({hasText:'record changed'}).waitFor();assert.equal(await page.locator('[name=name]').inputValue(),'Nursery');conflict=false;await page.locator('#editor [data-close]').first().click();pass('stale edit preserves input and explains reload');
- await go('access');await page.locator('[data-action=invite]').click();await page.locator('[name=full_name]').fill('New Teacher');await page.locator('[name=email]').fill('new@test.invalid');
+ await go('access');await page.locator('[data-action=invite]').click();
+ await page.locator('[name=full_name]').fill('New Teacher');
  assert.equal(requests.filter(path=>path==='/api/v1/school/access').length,1);
  assert.equal(await page.locator('[name=role]').inputValue(),'');
  assert.equal(await page.locator('[name=role]').evaluate(field=>field.validity.valueMissing),true);
- await page.locator('[name=role]').selectOption('teacher');await page.locator('#editorForm button[type=submit]').click();await page.locator('#resultDialog').waitFor();assert.equal(writes.at(-1).body.branch_id,'a');assert.ok((await page.locator('#inviteLink').inputValue()).endsWith('#invite='+'a'.repeat(64)));await page.locator('#resultDialog [data-close]').click();
+ await page.locator('[name=role]').selectOption('teacher');
+ assert.equal(await page.locator('[name=method]').inputValue(),'mobile');
+ assert.equal(await page.locator('#field-email').isVisible(),false);
+ assert.equal(await page.locator('#field-student_id').isVisible(),false);
+ await page.locator('[name=method]').selectOption('email');
+ assert.equal(await page.locator('#field-email').isVisible(),true);
+ await page.locator('[name=method]').selectOption('mobile');
+ await page.locator('#field-phone').fill('+91 90000 00003');
+ await page.locator('#editorForm button[type=submit]').click();
+ await page.locator('#resultDialog').waitFor();
+ assert.equal(writes.at(-1).body.branch_id,'a');
+ assert.equal(writes.at(-1).body.phone,'+91 90000 00003');
+ assert.equal(writes.at(-1).body.email,null);
+ assert.ok((await page.locator('#inviteLink').inputValue()).endsWith('#mobile-invite='+'a'.repeat(64)));
+ await page.locator('#resultDialog [data-close]').click();
  assert.equal(await page.getByRole('button',{name:'Invitations',exact:true}).getAttribute('aria-pressed'),'true');
- pass('invitations require an explicit role and open the Invitations view');
+ pass('teacher invitations support mobile by default and retain email as an option');
+ workspace.classes.push({...workspace.classes[0],id:'c2',section:'B'});
+ await page.locator('[data-action=reload]').click();
+ await page.getByRole('button',{name:'Invite a person',exact:true}).waitFor();
+ directory.users.push({id:'new-teacher',full_name:'New Teacher',phone:'9000000003',is_active:true});
+ directory.memberships.push({id:'new-teacher-member',user_id:'new-teacher',role:'teacher',branch_id:'a',is_active:true});
+ await go('assignments');
+ await page.getByRole('button',{name:'Add teacher assignment',exact:true}).click();
+ const assignmentDialog = page.getByRole('dialog',{name:'Add teacher assignment',exact:true});
+ await assignmentDialog.getByRole('combobox',{name:'Teacher',exact:true}).selectOption('new-teacher');
+ await assignmentDialog.getByLabel('Start date',{exact:true}).fill('2026-04-01');
+ await assignmentDialog.getByRole('button',{name:'Save changes',exact:true}).click();
+ await assignmentDialog.getByText('Select at least one class.',{exact:true}).waitFor();
+ await assignmentDialog.getByRole('checkbox',{name:'Nursery A · 2026–27',exact:true}).check();
+ await assignmentDialog.getByRole('checkbox',{name:'Nursery B · 2026–27',exact:true}).check();
+ assert.equal(await assignmentDialog.getByRole('checkbox',{name:/Historical class/}).count(),0);
+ await assignmentDialog.getByRole('button',{name:'Save changes',exact:true}).click();
+ await page.locator('#notice').filter({hasText:'Assignment saved for 2 classes.'}).waitFor();
+ assert.deepEqual(writes.at(-1),{path:'/api/v1/school/teacher-assignments',body:{
+   user_id:'new-teacher', starts_on:'2026-04-01', ends_on:null, is_active:true, class_ids:['c','c2'], branch_id:'a',
+ }});
+ workspace.classes.pop();
+ await go('access');
+ pass('newly accepted teachers can be assigned to multiple classes in open years');
  await page.locator('[data-action=invite]').click();
  await page.getByLabel('Role',{exact:true}).selectOption('parent');
  await page.getByLabel('Student',{exact:true}).selectOption('student-with-old-data');

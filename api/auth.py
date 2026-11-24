@@ -42,6 +42,9 @@ class Role(StrEnum):
     PARENT = 'parent'
 
 
+MOBILE_INVITATION_ROLES = {Role.PARENT, Role.TEACHER}
+
+
 @dataclass(frozen=True)
 class CurrentUser:
     id: str

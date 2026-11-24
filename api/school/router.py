@@ -3,12 +3,14 @@ from typing import Annotated, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from ..auth import MOBILE_LOGIN_SUFFIX, CurrentUser, Role, bearer, get_current_user, normalize_mobile
+from ..auth import (MOBILE_INVITATION_ROLES, MOBILE_LOGIN_SUFFIX, CurrentUser, Role,
+                    bearer, get_current_user, normalize_mobile)
 from ..config import Settings, get_settings
+from ..turso import school, teacher_performance
 from ..turso.repository import SchoolRepository
 
 router = APIRouter(prefix='/api/v1/school', tags=['school'])
@@ -87,12 +89,56 @@ class SchoolClass(Scoped):
     is_active: bool = True
 
 
-class Assignment(Scoped):
-    class_id: UUID
+class AssignmentSchedule(Scoped):
     user_id: UUID
     starts_on: date
     ends_on: date | None = None
     is_active: bool = True
+
+    @model_validator(mode='after')
+    def validate_dates(self):
+        if self.ends_on and self.ends_on < self.starts_on:
+            raise ValueError('End date cannot be before start date.')
+        return self
+
+
+class Assignment(AssignmentSchedule):
+    class_id: UUID
+
+
+class TeacherAssignments(AssignmentSchedule):
+    class_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+    @field_validator('class_ids')
+    @classmethod
+    def unique_classes(cls, value):
+        if len(set(value)) != len(value):
+            raise ValueError('Choose each class only once.')
+        return value
+
+
+class PerformanceFilter(Scoped):
+    teacher_id: UUID
+    class_id: UUID | None = None
+    starts_on: date
+    ends_on: date
+    page: int = Field(1, ge=1, le=10000)
+
+    @model_validator(mode='after')
+    def date_range(self):
+        if self.ends_on < self.starts_on:
+            raise ValueError('End date cannot be before start date.')
+        if (self.ends_on - self.starts_on).days > 365 or self.ends_on == date.max:
+            raise ValueError('Choose a date range of up to 366 days.')
+        return self
+
+
+class TeacherObservation(Scoped):
+    teacher_id: UUID
+    class_id: UUID
+    observed_on: date
+    feedback: str = Field(min_length=1, max_length=2000)
+    follow_up: str = Field('', max_length=1000)
 
 
 class Holiday(Scoped):
@@ -158,8 +204,8 @@ class StudentAccess(Fields):
 class Invitation(Recipient, StudentAccess):
     @model_validator(mode='after')
     def validate_mobile_role(self):
-        if self.phone and self.role != Role.PARENT:
-            raise ValueError('Mobile invitations are available for parents and guardians.')
+        if self.phone and self.role not in MOBILE_INVITATION_ROLES:
+            raise ValueError('Mobile invitations are available for teachers, parents and guardians.')
         return self
 
 
@@ -209,6 +255,36 @@ def workspace(user: Annotated[CurrentUser, Depends(get_current_user)],
     } else {}
     result = repo.request('POST', '/rpc/school_workspace', data=params)
     return {**result, 'account': user.session_details()} if include_account else result
+
+
+@router.get('/teacher-performance/options')
+def performance_options(branch_id: UUID, repo: Annotated[SchoolRepository, Depends(repository)]):
+    with repo.access() as access:
+        return teacher_performance.options(access, str(branch_id))
+
+
+@router.get('/teacher-performance')
+def performance(filters: Annotated[PerformanceFilter, Query()],
+                repo: Annotated[SchoolRepository, Depends(repository)]):
+    with repo.access() as access:
+        return teacher_performance.report(access, str(filters.branch_id), str(filters.teacher_id),
+                                          str(filters.class_id) if filters.class_id else None,
+                                          filters.starts_on, filters.ends_on, filters.page)
+
+
+@router.post('/teacher-performance/observations', status_code=201)
+def add_teacher_observation(body: TeacherObservation, repo: Annotated[SchoolRepository, Depends(repository)]):
+    with repo.access(write=True) as access:
+        return teacher_performance.add_observation(access, body.model_dump(mode='json'))
+
+
+@router.post('/teacher-assignments')
+def assign_teacher(body: TeacherAssignments, user: Annotated[CurrentUser, Depends(get_current_user)],
+                   repo: Annotated[SchoolRepository, Depends(repository)]):
+    data = body.model_dump(mode='json')
+    class_ids = data.pop('class_ids')
+    with repo.access(write=True) as access:
+        return {'assignments': school.assign_classes(access, data, class_ids)}
 
 
 @router.post('/records/{kind}')

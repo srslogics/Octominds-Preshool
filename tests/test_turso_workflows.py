@@ -2,7 +2,7 @@
 import io
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -178,7 +178,7 @@ class TursoWorkflows(unittest.TestCase):
         claim = '/auth/claim-mobile-invitation'
         details = {'branch_id': self.center, 'role': 'parent', 'full_name': 'Mobile Parent'}
         self.request('POST', invite, self.owner, {**details, 'phone': '+1 98765 43210'}, code=422)
-        self.request('POST', invite, self.owner, {**details, 'role': 'teacher', 'phone': '9876543210'}, code=422)
+        self.request('POST', invite, self.owner, {**details, 'role': 'branch_admin', 'phone': '9876543210'}, code=422)
         self.request('POST', invite, self.owner, {**details, 'phone': '9876543210', 'email': 'parent@example.invalid'}, code=422)
         self.request('POST', invite, self.owner, {**details, 'email': '9876543210@auth.octominds.invalid'}, code=422)
         self.request('POST', invite, self.teacher, {**details, 'phone': '9876543210'}, code=403)
@@ -225,6 +225,61 @@ class TursoWorkflows(unittest.TestCase):
         profile = self.request('GET', '/session', session).json()
         self.assertEqual(profile['full_name'], '9123456780')
         self.assertEqual(set(profile['branch_roles']), {self.center, self.other_center})
+
+    def test_mobile_teacher_can_switch_between_assigned_classes(self):
+        invite_path = '/school/access/invite'
+        details = {'branch_id': self.center, 'role': 'teacher', 'full_name': 'Mobile Teacher',
+                   'phone': '+91 98765 43210'}
+        self.request('POST', invite_path, self.teacher, details, code=403)
+        invitation = self.request('POST', invite_path, self.owner, details).json()
+        claim = {'phone': '9876543210', 'pin': '539176', 'invitation_token': invitation['token']}
+        self.request('POST', '/auth/claim-mobile-invitation', data={**claim, 'phone': '9123456780'}, code=403)
+        with patch('api.turso.accounts.email_enabled', return_value=False):
+            account = self.request('POST', '/auth/claim-mobile-invitation', data=claim).json()
+        self.assertEqual(account['role'], 'teacher')
+        session_path = '/auth/token?grant_type=password'
+        credentials = {'email': '9876543210@auth.octominds.invalid', 'password': claim['pin']}
+        account = self.request('POST', session_path, data=credentials).json()
+        teacher_id = self.request('GET', '/session', account).json()['id']
+        workspace = '/teachers/workspace'
+        self.assertEqual(self.request('GET', workspace, account).json()['classes'], [])
+
+        program = self.school('programs', {'branch_id': self.center, 'name': 'Playgroup'})['id']
+        second, unassigned = [
+            self.school('classes', {'branch_id': self.center, 'academic_year_id': self.year,
+                        'program_id': program, 'name': name, 'capacity': 20})['id']
+            for name in ('Playgroup A', 'Playgroup B')
+        ]
+        second_child, other_child = [
+            self.request('POST', '/parents/students', self.owner, {
+                'branch_id': self.center, 'class_id': classroom, 'full_name': name,
+            }).json()['id'] for classroom, name in [(second, 'Second Student'), (unassigned, 'Other Student')]
+        ]
+        path = '/school/teacher-assignments'
+        payload = {'branch_id': self.center, 'user_id': teacher_id, 'class_ids': [self.classroom, second],
+                   'starts_on': '2020-01-01'}
+        self.request('POST', path, account, payload, code=403)
+        self.request('POST', path, self.owner, {**payload, 'class_ids': [second, second]}, code=422)
+        self.request('POST', path, self.owner, {**payload, 'class_ids': [second, str(uuid4())]}, code=422)
+        self.assertEqual(self.request('GET', workspace, account).json()['classes'], [])
+
+        assigned = self.request('POST', path, self.owner, payload).json()['assignments']
+        self.assertEqual(self.request('POST', path, self.owner, payload).json()['assignments'], assigned)
+        desk = self.request('GET', workspace, account).json()
+        self.assertEqual({row['id'] for row in desk['classes']}, {self.classroom, second})
+        self.assertEqual({row['id'] for row in desk['students']}, {self.child, second_child})
+        self.request('GET', f'/teachers/children/{other_child}/profile', account, code=403)
+        self.request('GET', f'/teachers/children/{second_child}/profile', account)
+
+        another_invitation = self.request('POST', invite_path, self.owner,
+                                          {**details, 'branch_id': self.other_center}).json()
+        self.request('POST', '/auth/claim-mobile-invitation',
+                     data={**claim, 'invitation_token': another_invitation['token']}, code=409)
+        accepted = self.request('POST', '/school/accept-invitation', account,
+                                {'token': another_invitation['token']}).json()
+        self.assertEqual(accepted['role'], 'teacher')
+        self.assertEqual(set(self.request('GET', '/session', account).json()['branch_roles']),
+                         {self.center, self.other_center})
 
     def test_enrollment_details_prefill_and_mobile_invitation_connects_child(self):
         enrollment = {
@@ -389,3 +444,71 @@ class TursoWorkflows(unittest.TestCase):
         self.assertEqual(posted['posts'][0]['student_name'], 'Fixture Child')
         self.assertEqual(self.request('GET', family + '/posts?kind=homework', self.parent).json()['posts'][0]['title'],
                          'Class activity')
+
+    def test_owner_teacher_performance_uses_actor_class_and_date(self):
+        path = '/school/teacher-performance'
+        school_day = datetime.now(ZoneInfo('Asia/Kolkata')).date()
+        previous_day = school_day - timedelta(days=1)
+        query = f'?branch_id={self.center}&teacher_id={self.teacher_id}&starts_on={school_day}&ends_on={school_day}'
+        options = path + f'/options?branch_id={self.center}'
+        self.request('GET', options, code=401)
+        manager = self.login('manager@example.invalid', create_role='branch_admin')
+        for viewer in (self.teacher, self.parent, manager):
+            self.request('GET', options, viewer, code=403)
+            self.request('GET', path + query, viewer, code=403)
+        selections = self.request('GET', options, self.owner).json()
+        self.assertEqual(selections['teachers'][0]['id'], self.teacher_id)
+        self.assertEqual(selections['teachers'][0]['classes'][0]['id'], self.classroom)
+
+        daily = f'/teachers/children/{self.child}/daily/'
+        self.request('PUT', daily + str(school_day), self.teacher, {'attendance': 'present'})
+        self.request('PUT', daily + str(school_day), self.owner,
+                     {'attendance': 'present', 'rest': 'Rested quietly', 'version': 1})
+        historical = self.request('PUT', daily + str(previous_day), self.teacher, {'rest': 'Rested well'}).json()
+        with transaction(self.settings, write=True) as db:
+            db.execute("update audit_events set metadata='{}' where entity_id=?", (historical['id'],))
+        report = self.request('GET', path + query, self.owner).json()
+        stats = report['classes'][0]
+        self.assertEqual((stats['days_logged'], stats['attendance_days'], stats['care_days']), (1, 1, 0))
+        self.request('PUT', daily + str(school_day), self.teacher,
+                     {'attendance': 'present', 'rest': 'Rested quietly', 'lunch': 'Ate lunch', 'version': 2})
+
+        for session, title in ((self.teacher, 'Teacher’s diary'), (self.owner, 'Owner’s diary')):
+            self.request('POST', '/parents/posts', session, {
+                'class_id': self.classroom, 'kind': 'diary', 'title': title, 'body': 'Shared classroom notes',
+            }, code=201)
+        self.request('POST', '/parents/posts', self.teacher, {
+            'class_id': self.classroom, 'kind': 'homework', 'title': 'Home learning', 'body': 'Read together',
+        }, code=201)
+        album = self.request('POST', '/parents/albums', self.teacher,
+                             {'class_id': self.classroom, 'title': 'Classroom album', 'taken_on': str(previous_day)},
+                             code=201).json()['id']
+        content = io.BytesIO()
+        Image.new('RGB', (120, 90), 'pink').save(content, 'PNG')
+        self.request('POST', f'/parents/albums/{album}/photos/{uuid4()}', self.teacher, content=content.getvalue(), code=201)
+        self.request('POST', f'/parents/albums/{album}/publish', self.teacher, {})
+        self.request('POST', '/parents/albums', self.teacher,
+                     {'class_id': self.classroom, 'title': 'Unpublished draft', 'taken_on': str(school_day)}, code=201)
+
+        observation = {'branch_id': self.center, 'teacher_id': self.teacher_id, 'class_id': self.classroom,
+                       'observed_on': str(school_day), 'feedback': 'Encouraged each child to participate.',
+                       'follow_up': 'Offer two ways to join circle time.'}
+        self.request('POST', path + '/observations', self.teacher, observation, code=403)
+        self.request('POST', path + '/observations', manager, observation, code=403)
+        self.request('POST', path + '/observations', self.owner, {**observation, 'class_id': str(uuid4())}, code=422)
+        self.request('POST', path + '/observations', self.owner, observation, code=201)
+
+        report = self.request('GET', path + query + f'&class_id={self.classroom}', self.owner).json()
+        stats = report['classes'][0]
+        self.assertEqual((stats['days_logged'], stats['attendance_days'], stats['care_days']), (1, 1, 1))
+        self.assertEqual((stats['diary'], stats['homework'], stats['albums']), (1, 1, 1))
+        self.assertEqual(report['total_observations'], 1)
+        self.assertEqual(report['observations'][0]['follow_up'], observation['follow_up'])
+        self.assertFalse(report['older_records'])
+        historical_query = query.replace(str(school_day), str(previous_day))
+        history = self.request('GET', path + historical_query, self.owner).json()
+        self.assertTrue(history['older_records'])
+        self.assertEqual(history['classes'][0]['days_logged'], 1)
+        self.assertEqual(history['classes'][0]['care_days'], 0)
+        self.assertEqual(history['classes'][0]['albums'], 0)
+        self.assertEqual(history['observations'], [])

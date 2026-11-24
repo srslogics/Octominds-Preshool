@@ -22,8 +22,9 @@
     terms:['Terms','Organize the selected center’s academic years into terms.'],
     programs:['Programs','Define Playgroup, Nursery, KG, and other programs at this center.'],
     classes:['Classes and sections','Set up classrooms for a program and academic year.'],
-    assignments:['Teacher assignments','Assign teachers and time-limited substitute coverage.'],
+    assignments:['Teacher assignments','Give a teacher access to one or more classes and their enrolled students.'],
     holidays:['Holidays','Maintain the center’s calendar of closures.'],
+    performance:['Teacher performance','Review classroom records, published updates, and private observations.'],
     access:['People and access','Invite people, assign roles, and review account access.'],
     account:['My account','Review your access and manage your sign-in.']
   };
@@ -31,7 +32,7 @@
     'Workspace': ['overview'],
     'School setup': ['school', 'centers', 'years'],
     'Learning': ['programs', 'classes', 'terms', 'assignments', 'holidays'],
-    'Accounts': ['access', 'account'],
+    'Accounts': ['access', 'performance', 'account'],
   };
   const recordNames = {school:'school profile',centers:'center',years:'academic year',terms:'term',
     programs:'program',classes:'class',assignments:'teacher assignment',holidays:'holiday'};
@@ -47,6 +48,10 @@
     data.years.some(year => year.id === classroom.academic_year_id && year.status !== 'closed');
   const rows=kind=>(data?.[kind]||[]).filter(r=>!r.branch_id||r.branch_id===selected);
   const findName=(kind,id)=>(data?.[kind]||[]).find(r=>r.id===id)?.name||'Unavailable';
+  function assignmentClassName(id) {
+    const classroom = data.classes.find(record => record.id === id);
+    return classroom ? `${className(classroom)} · ${findName('years', classroom.academic_year_id)}` : 'Unavailable';
+  }
   const fullName=id=>access?.users.find(r=>r.id===id)?.full_name|| (id===user?.id ? user.full_name : 'Assigned teacher');
   const notify=message=>{clearTimeout(noticeTimer);$('#notice').textContent=message;$('#notice').hidden=false;noticeTimer=setTimeout(()=>$('#notice').hidden=true,6500);};
   function forgetInvitation() {
@@ -81,6 +86,7 @@
     authEpoch++;generation++;sessions.clear(session);
     session=null;refreshing=null;user=null;data=null;access=null;selected='';accessSection='members';
     editing=null;accessRequest=null;accessError=null;loading=false;
+    teacherPerformance.reset();
     resetAuth();$('#signInForm').reset();setMenu(false);
     $('#workspace').hidden=true;$('#auth').hidden=false;$('#content').replaceChildren();
     document.querySelectorAll('dialog[open]').forEach(d=>d.close());
@@ -139,11 +145,11 @@
     const invitation=sessionStorage.getItem(INVITE);
     if(invitation){
       const mobile = mobileInvite();
-      await api('/school/accept-invitation',{token:invitation});
+      const result = await api('/school/accept-invitation',{token:invitation});
       if(version!==authEpoch)return;
       forgetInvitation();
-      if (mobile) {
-        location.replace('/parents');
+      if (mobile || result.role === 'teacher') {
+        location.replace(result.role === 'teacher' ? '/teachers' : '/parents');
         return;
       }
       showInvitationControls();
@@ -202,11 +208,13 @@
       `<td role="cell"><span class="cell-label" aria-hidden="true">${esc(headers[index])}</span><div>${cell}</div></td>`).join('')}</tr>`).join('');
     return `<div class="table-wrap"><table role="table"><thead role="rowgroup"><tr role="row">${head}</tr></thead><tbody role="rowgroup">${body}</tbody></table></div>`;
   }
+  const teacherPerformance = window.createTeacherPerformance({ content: $('#content'), api, esc, table, notify });
   const empty=(title,copy,link='')=>`<div class="empty"><h2>${title}</h2><p>${copy}</p>${link}</div>`;
   const linkTo=(label,page)=>`<a class="button-link" href="#/${page}">${label}</a>`;
   function renderNavigation(page) {
     $('#navigation').innerHTML = Object.entries(navigation).map(([heading, routes]) => {
-      const links = routes.filter(key => key !== 'access' || administrator()).map(key =>
+      const links = routes.filter(key => (key !== 'access' || administrator()) &&
+        (key !== 'performance' || user.role === 'super_admin')).map(key =>
         `<a href="#/${key}" ${key === page ? 'aria-current="page"' : ''}>${pages[key][0]}</a>`).join('');
       return `<div class="nav-group"><p class="nav-heading">${heading}</p>${links}</div>`;
     }).join('');
@@ -250,6 +258,7 @@
   function render(){
     if(!user||!data||loading)return;
     const page=route(), info=pages[page];
+    if (page !== 'performance') teacherPerformance.reset();
     renderNavigation(page);
     $('#pageTitle').textContent=info?.[0]||'Page not found';$('#pageDescription').textContent=info?.[1]||'Choose a destination from the navigation.';
     document.title=`${info?.[0]||'School'} · OctoMinds`;
@@ -271,6 +280,11 @@
       const legacy=user.email?.endsWith('@auth.octominds.invalid');
       $('#content').innerHTML=`<section class="card"><h2>${esc(user.full_name)}</h2><p>${esc(legacy?'Mobile and PIN account':user.email)}</p><h3>Assigned access</h3><ul>${data.memberships.map(m=>`<li>${esc(labels[m.role])} · ${esc(m.branch_id?findName('centers',m.branch_id):'All centers')}${m.expires_at?` · expires ${esc(new Date(m.expires_at).toLocaleDateString())}`:''}</li>`).join('')}</ul><div class="account-buttons">${button(legacy?'Change PIN':'Change password','password')}${button('Sign out on all devices','logout-all')}</div><p class="tip">${legacy?'For a forgotten PIN, contact an authorized administrator.':'Use Forgot password on the sign-in screen for email recovery.'}</p></section>`;return;
     }
+    if (page === 'performance') {
+      if (user.role === 'super_admin') teacherPerformance.render(workingCenter());
+      else $('#content').innerHTML = empty('Owner access required', 'Teacher performance is available to the school owner.');
+      return;
+    }
     if(page==='access'){renderAccess();return;}
     const writable=page==='centers'?globalAdmin():Boolean(workingCenter()?.is_active && canManage(selected));
     if(!selected&&page!=='centers'){$('#content').innerHTML=empty('Set up a center first','School records are organized by center.',globalAdmin()?linkTo('Go to Centers','centers'):'');return;}
@@ -288,7 +302,7 @@
       if(page==='terms')cells=[esc(r.name),esc(findName('years',r.academic_year_id)),dateRange(r)];
       if(page==='programs')cells=[esc(r.name),esc(r.description||'—'),state(r.is_active?'active':'inactive')];
       if(page==='classes')cells=[esc(className(r)),`${esc(findName('programs',r.program_id))}<small>${esc(findName('years',r.academic_year_id))}</small>`,`${esc(r.room||'Not set')}<small>Capacity ${esc(r.capacity)}</small>`,state(r.is_active?'active':'inactive')];
-      if(page==='assignments')cells=[esc(fullName(r.user_id)),esc(findName('classes',r.class_id)),dateRange(r),state(assignmentStatus(r))];
+      if(page==='assignments')cells=[esc(fullName(r.user_id)),esc(assignmentClassName(r.class_id)),dateRange(r),state(assignmentStatus(r))];
       if(page==='holidays')cells=[esc(r.name),dateRange(r),state(r.is_active?'active':'inactive')];
       const yearId=r.academic_year_id||(page==='assignments'?data.classes.find(c=>c.id===r.class_id)?.academic_year_id:null);
       const closed=r.status==='closed'||data.years.some(y=>y.id===yearId&&y.status==='closed');
@@ -372,7 +386,7 @@
   const mayGrant=role=>user.role==='super_admin'||(globalAdmin()&&!['super_admin','management'].includes(role))||(!globalAdmin()&&['teacher','parent','accountant','admission_counsellor'].includes(role));
   const teachers = () => (access?.users || []).filter(account => account.is_active && access.memberships.some(m =>
     m.user_id===account.id && m.role==='teacher' && m.branch_id===selected && m.is_active &&
-    (!m.expires_at || Date.parse(m.expires_at)>Date.now()))).map(account => [account.id,account.full_name]);
+    (!m.expires_at || Date.parse(m.expires_at)>Date.now()))).map(account => [account.id, [account.full_name, contact(account)].filter(Boolean).join(' · ')]);
   function recordPrerequisite(page) {
     if (['classes','terms'].includes(page) && !options('years').length) {
       return 'Add an <a href="#/years">academic year</a> first.';
@@ -389,7 +403,7 @@
     if (assignment.ends_on && assignment.ends_on < today) return 'expired';
     return 'assigned';
   }
-  function definition(kind){
+  function definition(kind, row = {}){
     const active=[['true','Active'],['false','Archived']];
     const dates=[text('starts_on','Start date','date'),text('ends_on','End date','date')];
     const roles=Object.entries(labels).filter(([role]) => mayGrant(role) && (workingCenter()?.is_active || ['super_admin','management'].includes(role)));
@@ -409,7 +423,14 @@
         select('method','Parent sign-in method',signInMethods),
         text('phone','Mobile number','tel',false),text('email','Email address','email',false),
         ...relationshipFields],
-      assignments:[select('class_id','Class',options('classes')),select('user_id','Teacher',teachers()),text('starts_on','Start date','date'),text('ends_on','End date for temporary cover','date',false),select('is_active','Status',active)],
+      assignments:[
+        select('user_id','Teacher',row.id ? [[row.user_id, fullName(row.user_id)]] : teachers(), row.id ? '' : 'Choose a teacher'),
+        text('starts_on','Start date','date'),
+        text('ends_on','End date for temporary cover','date',false),
+        select('is_active','Status',active),
+        row.id ? select('class_id','Class',[[row.class_id, assignmentClassName(row.class_id)]])
+          : {key:'class_ids', type:'class-list', options:options('classes').map(([id]) => [id, assignmentClassName(id)])},
+      ],
       holidays:[text('name','Holiday name'),...dates,select('is_active','Status',active)],
       invite:[select('role','Role',roles,'Choose a role'),...familyFields,text('full_name','Full name'),
         select('method','Sign-in method',signInMethods),
@@ -446,7 +467,9 @@
       : '';
   }
   function updateAccessFields(kind, changed = '') {
-    const parent = $('#field-role').value === 'parent';
+    const role = $('#field-role').value;
+    const parent = role === 'parent';
+    const canInviteByMobile = parent || role === 'teacher';
     const studentField = $('#field-student_id');
     const droppedStudent = !parent && Boolean(studentField.value);
     if (!parent) studentField.value = '';
@@ -469,8 +492,8 @@
     updateRelationship(parent && Boolean(studentField.value));
     if (kind === 'invite') {
       const method = $('#field-method');
-      if (!parent || changed === 'role') method.value = parent ? 'mobile' : 'email';
-      toggleField(method, parent);
+      if (!canInviteByMobile || changed === 'role') method.value = canInviteByMobile ? 'mobile' : 'email';
+      toggleField(method, canInviteByMobile);
       updateContactFields();
     }
   }
@@ -484,9 +507,14 @@
     const center=workingCenter();
     $('#editorHint').textContent=classroom
       ? `${className(classroom)} · ${center.name} · ${findName('years',classroom.academic_year_id)}`
-      : ['invite','grant'].includes(kind)?(center?.is_active?`Working center: ${center.name}. Owner and management roles apply across all centers.`:'Only school-wide roles are available until you select an active center.'):kind==='years'?'Closing a year makes it read only. Close the current year before activating another.':kind==='assignments'?'The dates determine when the teacher gets access to this class.':kind==='centers'?'Opening hours use the center’s local time.':'';
+      : ['invite','grant'].includes(kind)?(center?.is_active?`Working center: ${center.name}. Owner and management roles apply across all centers.`:'Only school-wide roles are available until you select an active center.'):kind==='years'?'Closing a year makes it read only. Close the current year before activating another.':kind==='assignments'?(row.id?'The dates determine when the teacher has access to this class.':'Select one or more classes. The same dates apply to each class.'):kind==='centers'?'Opening hours use the center’s local time.':'';
     $('#formError').textContent='';
-    $('#fields').innerHTML=definition(kind).map(f=>{
+    $('#fields').innerHTML=definition(kind, row).map(f=>{
+      if (f.type === 'class-list') {
+        return `<fieldset class="wide class-picker"><legend>Classes</legend>
+          <div>${f.options.map(([id, name]) => `<label class="check"><input type="checkbox" name="class_ids" value="${esc(id)}">${esc(name)}</label>`).join('')}</div>
+        </fieldset>`;
+      }
       if (f.type==='guardian-heading') {
         return '<div class="wide enrollment-heading"><h3>Parent or guardian details <small>(optional)</small></h3><p>Saved details fill in the parent invitation in People and access.</p></div>';
       }
@@ -539,12 +567,13 @@
     event.preventDefault();const context=editing;const button=event.submitter;button.disabled=true;$('#formError').textContent='';
     try{
       const form = new FormData(event.currentTarget);
-      const values={};for(const f of definition(context.kind)){
+      const values={};for(const f of definition(context.kind, context.row)){
         if (!f.key) continue;
         let value=form.get(f.key);
         if(f.type==='number')value=value===''?null:Number(value);
         else if(f.key==='is_active')value=value==='true';
         else if(f.key==='working_days')value=form.getAll('working_days').map(Number);
+        else if(f.type==='class-list')value=form.getAll(f.key);
         else if(f.type==='datetime-local')value=value?new Date(value).toISOString():null;
         else if(value==='')value=['section'].includes(f.key)?'':null;
         values[f.key]=value;
@@ -593,11 +622,14 @@
         }
         values.branch_id=schoolWide?null:context.branch;
         const inviteByMobile = context.kind === 'invite' && values.method === 'mobile';
-        if (context.kind === 'invite' && values.student_id) {
+        if (inviteByMobile && !mobileNumber(values.phone)) {
+          throw Error('Enter a 10-digit Indian mobile number.');
+        }
+        if (context.kind === 'invite' && (values.student_id || values.role === 'teacher')) {
           const account = recipientAccount(values.phone, values.email);
           if (account && !sameName(account.full_name, values.full_name)) {
             const contactType = inviteByMobile ? 'mobile number' : 'email address';
-            throw Error(`This ${contactType} is registered to ${account.full_name}. Check the guardian’s contact details or select that person under Assign existing account.`);
+            throw Error(`This ${contactType} is registered to ${account.full_name}. Check the contact details or select that person under Assign existing account.`);
           }
         }
         delete values.method;
@@ -608,16 +640,25 @@
           const fragment = inviteByMobile ? 'mobile-invite' : 'invite';
           $('#copyStatus').textContent='';
           const instructions = inviteByMobile
-            ? 'Send this link directly to the invited mobile number. The parent has seven days to set up a PIN or accept with their existing PIN.'
+            ? 'Send this link directly to the invited mobile number. The recipient has seven days to set up a PIN or accept with their existing PIN.'
             : 'Send this link directly to the person you invited. They have seven days to accept it with their invited email address.';
           $('#inviteInstructions').textContent = values.student_id
             ? `${instructions} The parent will be linked to the student when they accept.`
-            : instructions;
+            : values.role === 'teacher' ? `${instructions} After they accept, open Teacher assignments to select their classes.` : instructions;
           $('#inviteLink').value=`${location.origin}/school#${fragment}=${result.token}`;
           $('#resultDialog').showModal();
         }else notify(values.student_id ? 'Parent connected to the student.' : 'Account access assigned.');return;
       }
       if(!['school','centers'].includes(context.kind))values.branch_id=context.branch;
+      if (context.kind === 'assignments' && !context.row.id) {
+        if (!values.class_ids.length) throw Error('Select at least one class.');
+        const result = await api('/school/teacher-assignments', values);
+        $('#editor').close();
+        await load();
+        const count = result.assignments.length;
+        notify(`Assignment saved for ${count} ${count === 1 ? 'class' : 'classes'}.`);
+        return;
+      }
       if(context.row.id&&context.kind==='years'&&values.status==='closed'&&!window.confirm('Close this academic year? Its setup will become read only.'))return;
       await api(`/school/records/${context.kind}`,{id:context.row.id||null,version:context.row.version||null,data:values});
       $('#editor').close();await load();notify('Changes saved.');
@@ -666,7 +707,21 @@
     $(target).focus();
   });
   $('#centerSelect').addEventListener('change',event=>{selected=event.target.value;render();});
-  window.addEventListener('hashchange',()=>{const params=new URLSearchParams(location.hash.slice(1));if(['invite','mobile-invite','confirm','recovery'].some(key=>params.has(key))){location.reload();return;}if(user){setMenu(false);render();$('#main').focus();}});
+  window.addEventListener('hashchange', () => {
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (['invite', 'mobile-invite', 'confirm', 'recovery'].some(key => params.has(key))) {
+      location.reload();
+      return;
+    }
+    if (!user) return;
+    setMenu(false);
+    if (route() === 'assignments' && needsAccess('assignments')) {
+      access = null;
+      accessError = null;
+    }
+    render();
+    $('#main').focus();
+  });
   document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',event=>{if(d.querySelector('button[type=submit]:disabled'))event.preventDefault();}));
   $('#copyInvite').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#inviteLink').value);$('#copyStatus').textContent='Invitation link copied.';}catch{$('#inviteLink').focus();$('#inviteLink').select();$('#copyStatus').textContent='Select and copy the invitation link.';}});
   async function logout(scope='local'){
@@ -747,7 +802,7 @@
       session = sessions.save(result, false, session);
       forgetInvitation();
       $('#mobileSignupForm').reset();
-      location.replace('/parents');
+      location.replace(result.role === 'teacher' ? '/teachers' : '/parents');
     } catch (error) {
       if (version === authEpoch) $('#authMessage').textContent = error.message;
     } finally {

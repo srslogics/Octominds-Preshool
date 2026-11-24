@@ -274,6 +274,11 @@ dialog > p, #editorHint { margin: 0 0 16px; font-size: .9rem; }
 .day-picker legend { font-size: .875rem; font-weight: 650; }
 .day-picker label, .check { flex-direction: row; align-items: center; font-weight: 500; }
 .day-picker input, .check input { width: 17px; min-height: 17px; }
+.class-picker { min-width: 0; margin: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.class-picker legend { padding-inline: 5px; font-size: .875rem; font-weight: 650; }
+.class-picker > div { display: grid; gap: 3px; max-height: 220px; overflow: auto; }
+.class-picker label { min-height: 36px; padding: 3px; overflow-wrap: anywhere; }
+.class-picker input { flex: none; }
 .error, #formError { padding: 12px; border-radius: 8px; background: #fff1f1; color: #962733; }
 #formError { margin-top: 13px; font-size: .875rem; }
 dialog .copy-status { margin: 10px 0 0; color: #1d5d43; font-size: .8125rem; }
@@ -375,3 +380,25 @@ p.tip { margin-top: 14px; }
   .topbar { column-gap: 8px; padding-inline: 12px; }
   .workspace-label { font-size: .8125rem; overflow-wrap: anywhere; }
 }
+
+.performance-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+}
+.performance-filters label, .performance-filters input, .performance-filters select { min-width: 0; }
+.performance-filters button { min-height: 42px; }
+.performance-error { grid-column: 1 / -1; margin: 0; }
+.performance-report { display: grid; gap: 24px; margin-top: 20px; }
+.performance-context { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.performance-context span { font-size: .875rem; color: var(--muted); }
+.performance-observations { padding: clamp(14px, 4vw, 24px); }
+.performance-add summary { color: var(--accent); cursor: pointer; font-weight: 700; }
+.performance-add form { margin-top: 14px; }
+.performance-history { display: grid; gap: 12px; list-style: none; padding: 0; margin: 16px 0 0; }
+.performance-history li { padding-top: 12px; border-top: 1px solid var(--border); }
+.performance-note { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.performance-tip { margin-top: 8px; }
+.performance-pagination { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }

@@ -83,7 +83,8 @@ def save_daily(student_id: UUID, day: date, body: Daily, user: User, repo: Repo)
         ident = {'student_id': child['id'], 'school_day': day.isoformat()}
         existing = teaching.daily(access.db, child['id'], day.isoformat())
         return teaching.save_record(access, 'student_daily_records', existing, ident,
-                                    body.model_dump(exclude={'version'}), body.version, child['branch_id'])
+                                    body.model_dump(exclude={'version'}), body.version, child['branch_id'],
+                                    class_id=child['class_id'])
 
 
 @router.get('/classes/{class_id}/menu/{day}')

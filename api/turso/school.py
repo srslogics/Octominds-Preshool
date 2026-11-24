@@ -107,11 +107,22 @@ def save_record(access, p_kind, p_data, p_id=None, p_version=None):
             invalid('Assignment dates must fall within the academic year.')
         if p_data['is_active'] and 'teacher' not in Access(db, teacher).roles.get(branch, set()):
             invalid('Teacher needs active access to this center.')
+        if not old:
+            existing = db.one('''select * from teacher_assignments
+                where class_id=? and user_id=? and starts_on=? and ends_on is ? and is_active=?
+                order by id limit 1''',
+                (classroom['id'], teacher, p_data['starts_on'], p_data['ends_on'], p_data['is_active']))
+            if existing:
+                return existing
     values = {**p_data, 'updated_at': now()}
     result = db.update(table, p_id, {**values, 'version': p_version+1}) if p_id else db.insert(table, values)
     access.audit('school.record_saved', p_kind, result['id'],
                  result['id'] if p_kind == 'centers' else branch, {'before': old, 'after': result})
     return result
+
+
+def assign_classes(access, data, class_ids):
+    return [save_record(access, 'assignments', {**data, 'class_id': class_id}) for class_id in class_ids]
 
 
 def directory(access):
@@ -267,7 +278,7 @@ def complete_invitation(access, invitation):
         connect_enrolled_guardian(issuer, access.actor, branch, enrollment)
     db.update('school_invitations', invitation['id'], {'accepted_by': access.actor, 'accepted_at': now()})
     access.audit('school.invitation_accepted', 'membership', membership['id'], branch)
-    return {'id': membership['id']}
+    return {'id': membership['id'], 'role': role}
 
 
 def accept_invitation(access, p_token):

@@ -358,6 +358,7 @@ watchdog.unref();
     serviceWorkers: "block",
   });
   const p = await live.newPage();
+  const liveReads = [];
   p.on("pageerror", (e) => errors.push(e.message));
   const A = "00000000-0000-4000-8000-000000000101",
     B = "00000000-0000-4000-8000-000000000102";
@@ -385,6 +386,7 @@ watchdog.unref();
   await p.route("**/api/v1/**", async (r) => {
     const u = new URL(r.request().url());
     if (u.pathname.startsWith("/api/v1/auth/")) return r.fallback();
+    liveReads.push(u.pathname);
     if (u.pathname.endsWith("/workspace"))
       return r.fulfill({
         json: {
@@ -418,6 +420,11 @@ watchdog.unref();
         json: { detail: "School is temporarily unavailable" },
       });
     const child = u.pathname.includes(A) ? "A" : "B";
+    if (u.pathname.endsWith("/today"))
+      return r.fulfill({
+        json: { posts: [{ id: child, title: "Today for child " + child, kind: "notice",
+          created_at: new Date().toISOString(), author_name: "School" }], calendar: { events: [], holidays: [] } },
+      });
     if (u.pathname.endsWith("/calendar")) return r.fulfill({ json: { events: [], holidays: [] } });
     if (u.pathname.endsWith("/profile"))
       return r.fulfill({
@@ -455,10 +462,15 @@ watchdog.unref();
   console.log("PASS: outage and retry");
   hold = true;
   const delayed = p.waitForRequest((r) => r.url().includes(A + "/posts"));
+  const beforeRefresh = liveReads.length;
   await p.getByRole("button", { name: "Refresh updates", exact: true }).click();
   await delayed;
   await p.locator("#childSelect").selectOption(B);
   await p.getByRole("heading", { name: "Only child B", exact: true }).waitFor();
+  assert.deepEqual(liveReads.slice(beforeRefresh), [
+    `/api/v1/parents/children/${A}/posts`,
+    `/api/v1/parents/children/${B}/posts`,
+  ], "Refreshing a module and switching child should fetch only their updates");
   await p.waitForTimeout(500);
   assert.equal(
     await p.getByRole("heading", { name: "Only child A", exact: true }).count(),
@@ -470,8 +482,10 @@ watchdog.unref();
   assert.equal(await p.getByText("Gate Pickup Pass").count(), 0);
   assert.equal(await p.getByRole("link", { name: "Call school", exact: true }).getAttribute("href"), "tel:+911234567890");
   await a11y(p);
+  const beforeToday = liveReads.length;
   await p.locator("#childBack").click();
-  await p.getByRole("heading", { name: "Only child B", exact: true }).waitFor();
+  await p.getByRole("heading", { name: "Today for child B", exact: true }).waitFor();
+  assert.deepEqual(liveReads.slice(beforeToday), [`/api/v1/parents/children/${B}/today`]);
   assert.equal(await p.getByText("Sample menu", { exact: true }).count(), 0);
   assert.equal(await p.getByText("Nap & Quiet Rest").count(), 0);
   assert.equal(await p.getByRole("link", { name: "Gate pass", exact: true }).count(), 0);

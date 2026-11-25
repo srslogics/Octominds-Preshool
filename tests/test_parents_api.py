@@ -26,12 +26,13 @@ class ParentsAPI(unittest.TestCase):
         response = self.client.get('/api/v1/parents/workspace')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers['cache-control'], 'no-store')
-        self.repo.request.assert_called_once_with('POST', '/rpc/parents_workspace', data={})
+        self.repo.request.assert_called_once_with('POST', '/rpc/parents_workspace', data={}, include_account=False)
 
     def test_every_endpoint_requires_sign_in(self):
         app.dependency_overrides.clear()
         for method, path, data in [
             ('GET', '/workspace', None), ('GET', f'/children/{self.student}/posts', None),
+            ('GET', f'/children/{self.student}/today?month=2026-11-01', None),
             ('GET', f'/children/{self.student}/calendar?month=2026-11-01', None),
             ('GET', f'/children/{self.student}/messages', None),
             ('POST', f'/children/{self.student}/messages', {'body': 'Hello'}),

@@ -61,7 +61,7 @@ function downloadCalendar(entries, snapshot, reminder, parseDay, isoDate) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function createSchoolCalendar({ api, esc, icon, isoDate, parseDay, empty, notify }) {
+export function createSchoolCalendar({ esc, icon, isoDate, parseDay, empty, notify }) {
   let anchor, month, selectedDay, filter, snapshot;
 
   function reset() {
@@ -132,11 +132,11 @@ export function createSchoolCalendar({ api, esc, icon, isoDate, parseDay, empty,
     </li>`;
   }
 
-  async function screen(student, preview, current) {
+  async function screen(student, preview, read, current) {
     const today = isoDate(new Date());
     const viewedMonth = month;
     if (!snapshot || snapshot.student !== student.id || snapshot.month !== viewedMonth || snapshot.preview !== preview) {
-      const result = await api(`/children/${student.id}/calendar?month=${viewedMonth}&include_next_month=true`);
+      const result = await read(`/children/${student.id}/calendar?month=${viewedMonth}&include_next_month=true`);
       if (!current()) return { html: "", canExport: false };
       snapshot = { student: student.id, month: viewedMonth, preview, center: student.center_name,
         entries: normalize(result, preview) };

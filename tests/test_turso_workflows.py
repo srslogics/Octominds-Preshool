@@ -15,7 +15,7 @@ from PIL import Image
 from api.config import Settings, get_settings
 from api.main import app
 from api.turso.accounts import hasher
-from api.turso.db import initialize, now, transaction
+from api.turso.db import connect, initialize, now, transaction
 
 
 class TursoWorkflows(unittest.TestCase):
@@ -88,6 +88,7 @@ class TursoWorkflows(unittest.TestCase):
         self.request('POST','/parents/guardians',self.owner,{**self.guardian,'is_active':False})
         self.request('GET',feed,self.parent,code=403)
         self.request('GET',thread,self.parent,code=403)
+        self.request('GET',f'/parents/children/{self.child}/today?month=2026-11-01',self.parent,code=403)
 
     def test_private_photo_transaction_and_retry(self):
         album=self.request('POST','/parents/albums',self.teacher,{'class_id':self.classroom,'title':'Test Album',
@@ -384,6 +385,11 @@ class TursoWorkflows(unittest.TestCase):
         self.assertEqual(result['today']['student_id'], self.child)
         self.assertEqual([post['title'] for post in result['today']['posts']], ['First update'])
         self.assertIn('holidays', result['today']['calendar'])
+        with patch('api.turso.db.connect', wraps=connect) as connections:
+            refreshed = self.request('GET', f'/parents/children/{self.child}/today?month=2026-11-01', self.parent)
+            self.assertEqual(connections.call_count, 1)
+        self.assertEqual(refreshed.json(), result['today'])
+        self.assertEqual(refreshed.headers['cache-control'], 'no-store')
         self.assertNotIn('today', self.request('GET', route, self.unlinked).json())
         self.request('GET', route, code=401)
 

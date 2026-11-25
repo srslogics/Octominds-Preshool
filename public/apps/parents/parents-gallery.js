@@ -84,10 +84,10 @@ export function createGallery({
     albums = [];
   }
 
-  async function screen(student, page) {
+  async function screen(student, page, read) {
     const c = context();
     const filter = c.classId ? `&class_id=${encodeURIComponent(c.classId)}` : "";
-    const result = await api(student ? `/children/${student.id}/gallery?page=${page}` : `/gallery/staff?page=${page}${filter}`);
+    const result = await read(student ? `/children/${student.id}/gallery?page=${page}` : `/gallery/staff?page=${page}${filter}`);
     if (!current(c)) return "";
     staffView = !student;
     albums = result.albums;
@@ -127,6 +127,8 @@ export function createGallery({
       "GET",
       true,
       "blob",
+      {},
+      context().signal,
     );
   }
   function mount() {

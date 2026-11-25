@@ -65,14 +65,19 @@ class Message(Fields):
 
 
 @router.get('/workspace')
-def workspace(user: User, repo: Repo, include_account: bool = False, today_month: date | None = None):
+def workspace(repo: Repo, include_account: bool = False, today_month: date | None = None):
     params = {'p_today_month': today_month.isoformat()} if today_month else {}
-    result = repo.request('POST', '/rpc/parents_workspace', data=params)
-    return {**result, 'account': user.session_details()} if include_account else result
+    return repo.request('POST', '/rpc/parents_workspace', data=params, include_account=include_account)
+
+
+@router.get('/children/{student_id}/today')
+def today(student_id: UUID, month: date, repo: Repo):
+    return repo.request('POST', '/rpc/parents_today', data={
+        'p_student': str(student_id), 'p_month': month.isoformat()})
 
 
 @router.get('/children/{student_id}/posts')
-def posts(student_id: UUID, user: User, repo: Repo,
+def posts(student_id: UUID, repo: Repo,
           kind: Literal['all', 'circulars', 'notice', 'homework', 'diary', 'event'] = 'all',
           page: int = Query(1, ge=1, le=10000)):
     return repo.request('POST', '/rpc/parents_feed', data={
@@ -80,12 +85,12 @@ def posts(student_id: UUID, user: User, repo: Repo,
 
 
 @router.get('/children/{student_id}/profile')
-def child_profile(student_id: UUID, user: User, repo: Repo):
+def child_profile(student_id: UUID, repo: Repo):
     return repo.request('POST', '/rpc/parents_child_profile', data={'p_student': str(student_id)})
 
 
 @router.get('/children/{student_id}/calendar')
-def calendar(student_id: UUID, month: date, user: User, repo: Repo,
+def calendar(student_id: UUID, month: date, repo: Repo,
              include_next_month: bool = False, include_care: bool = False):
     return repo.request('POST', '/rpc/parents_calendar', data={
         'p_student': str(student_id), 'p_month': month.isoformat(),
@@ -93,7 +98,7 @@ def calendar(student_id: UUID, month: date, user: User, repo: Repo,
 
 
 @router.get('/children/{student_id}/messages')
-def messages(student_id: UUID, user: User, repo: Repo, page: int = Query(1, ge=1, le=10000)):
+def messages(student_id: UUID, repo: Repo, page: int = Query(1, ge=1, le=10000)):
     return repo.request('POST', '/rpc/parents_thread', data={'p_student': str(student_id), 'p_page': page})
 
 

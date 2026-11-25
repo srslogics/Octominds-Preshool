@@ -110,24 +110,28 @@ def get_current_user(credentials: Credentials, settings: Annotated[Settings, Dep
     if not credentials:
         raise HTTPException(401, 'Authentication required')
     with transaction(settings) as db:
-        rows = db.all(f"""
-            select p.id,p.full_name,p.phone,a.email,m.role,m.branch_id,m.expires_at,b.name branch_name
-            {SESSION_ACCOUNT}
-            left join user_memberships m on m.user_id=p.id and m.is_active=1
-                and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
-                and (m.role in ('super_admin','management') or exists (
-                    select 1 from branches where id=m.branch_id and is_active=1))
-            left join branches b on b.id=m.branch_id
-            where {VALID_SESSION}
-            """, session_params(credentials.credentials))
-        if not rows:
-            raise HTTPException(401, 'Your session expired. Please sign in again.')
-        try:
-            role, scopes = _resolve_memberships(rows)
-        except PermissionError as exc:
-            raise HTTPException(403, str(exc)) from exc
-        branch = next(iter(scopes)) if '*' not in scopes and len(scopes) == 1 else None
-        account = rows[0]
-        branch_name = next((row['branch_name'] for row in rows if row['branch_id'] == branch), None) if branch else None
-        return CurrentUser(account['id'], account['email'], account['phone'], role, branch,
-                           account['full_name'], branch_name, scopes)
+        return resolve_current_user(db, credentials.credentials)
+
+
+def resolve_current_user(db, token):
+    rows = db.all(f"""
+        select p.id,p.full_name,p.phone,a.email,m.role,m.branch_id,m.expires_at,b.name branch_name
+        {SESSION_ACCOUNT}
+        left join user_memberships m on m.user_id=p.id and m.is_active=1
+            and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
+            and (m.role in ('super_admin','management') or exists (
+                select 1 from branches where id=m.branch_id and is_active=1))
+        left join branches b on b.id=m.branch_id
+        where {VALID_SESSION}
+        """, session_params(token))
+    if not rows:
+        raise HTTPException(401, 'Your session expired. Please sign in again.')
+    try:
+        role, scopes = _resolve_memberships(rows)
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    branch = next(iter(scopes)) if '*' not in scopes and len(scopes) == 1 else None
+    account = rows[0]
+    branch_name = next((row['branch_name'] for row in rows if row['branch_id'] == branch), None) if branch else None
+    return CurrentUser(account['id'], account['email'], account['phone'], role, branch,
+                       account['full_name'], branch_name, scopes)

@@ -64,17 +64,17 @@ def normalize_photo(raw: bytes):
 
 
 @router.get('/children/{student_id}/gallery')
-def gallery(student_id: UUID, user: User, repo: Repo, page: int = Query(1, ge=1, le=10000)):
+def gallery(student_id: UUID, repo: Repo, page: int = Query(1, ge=1, le=10000)):
     return repo.request('POST', '/rpc/parents_gallery', data={'p_student': str(student_id), 'p_page': page})
 
 
 @router.get('/gallery/staff')
-def staff_albums(user: User, repo: Repo, page: int = Query(1, ge=1, le=10000), class_id: UUID | None = None):
+def staff_albums(repo: Repo, page: int = Query(1, ge=1, le=10000), class_id: UUID | None = None):
     return repo.request('POST', '/rpc/parents_staff_albums', data={'p_page': page, 'p_class': str(class_id) if class_id else None})
 
 
 @router.get('/albums/{album_id}')
-def detail(album_id: UUID, user: User, repo: Repo, student_id: UUID | None = None):
+def detail(album_id: UUID, repo: Repo, student_id: UUID | None = None):
     return repo.request('POST', '/rpc/parents_album_detail', data={'p_album': str(album_id), 'p_student': str(student_id) if student_id else None})
 
 
@@ -113,8 +113,8 @@ async def upload_photo(album_id: UUID, photo_id: UUID, request: Request, user: U
 
 
 @router.get('/photos/{photo_id}/image')
-def photo_image(photo_id: UUID, user: User, repo: Repo, student_id: UUID | None = None, thumbnail: bool = False):
-    with repo.access() as access:
+def photo_image(photo_id: UUID, repo: Repo, student_id: UUID | None = None, thumbnail: bool = False):
+    with repo.parent_read() as (access, _):
         data = photos.image(access, str(photo_id), str(student_id) if student_id else None, thumbnail)
     return Response(data, media_type='image/jpeg', headers={
         'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline; filename="school-photo.jpg"'})

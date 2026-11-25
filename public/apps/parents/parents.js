@@ -1,7 +1,7 @@
 import { createTeacherWorkspace, teacherPages } from "../teachers/teachers.js?v=1";
 import { renderFamilyFeed } from "./parents-feeds.js?v=2";
-import { createSchoolCalendar } from "./parents-calendar.js?v=1";
-import { createGallery } from "./parents-gallery.js?v=7";
+import { createSchoolCalendar } from "./parents-calendar.js?v=2";
+import { createGallery } from "./parents-gallery.js?v=8";
 const $ = (s) => document.querySelector(s);
 const cfg = window.OCTOMINDS_CONFIG || {};
 const sessions = window.OctomindsSession;
@@ -94,6 +94,7 @@ let session = null,
   editing = null,
   messageDraft = null,
   refreshing = null,
+  moduleRequest = null,
   toastTimer;
 const route = () => {
   const fallback = teacherPortal ? "classroom" : "today";
@@ -146,6 +147,7 @@ function setPasswordVisibility(visible) {
   toggle.firstChild.textContent = visible ? "Hide" : "Show";
 }
 function clearSession() {
+  moduleRequest?.abort();
   calendarView.reset();
   sampleAcknowledgments.clear();
   teacherDesk?.reset();
@@ -234,6 +236,7 @@ async function api(
   retry = true,
   responseType = "json",
   extraHeaders = {},
+  signal,
 ) {
   if (preview) return preview.request(path, body, method, extraHeaders);
   if (!session?.access_token) throw Error("Please sign in again.");
@@ -245,11 +248,13 @@ async function api(
   )
     await refresh();
   if (version !== epoch) throw Error("Your session changed.");
+  signal?.throwIfAborted();
   const token = session.access_token;
   const prefix = path.startsWith("/teachers/") ? "/api/v1" : "/api/v1/parents";
   const response = await fetch(prefix + path, {
     method,
     cache: "no-store",
+    signal,
     headers: {
       ...extraHeaders,
       Authorization: `Bearer ${token}`,
@@ -266,21 +271,24 @@ async function api(
   if (response.status === 401 && retry) {
     if (session.access_token === token) await refresh();
     if (version !== epoch) throw Error("Your session changed.");
-    return api(path, body, method, false, responseType, extraHeaders);
+    return api(path, body, method, false, responseType, extraHeaders, signal);
   }
   if (response.ok && responseType === "blob") return response.blob();
   const result = await response.json().catch(() => ({}));
+  signal?.throwIfAborted();
   if (version !== epoch) throw Error("Your session changed.");
   if (!response.ok) {
     if (response.status === 401 && session.access_token === token) {
       clearSession();
       $("#authMessage").textContent = "Your session expired. Please sign in again.";
     }
-    throw Error(
+    const error = Error(
       typeof result.detail === "string"
         ? result.detail
         : "We couldn’t complete that request. Please try again.",
     );
+    error.status = response.status;
+    throw error;
   }
   return result;
 }
@@ -331,6 +339,7 @@ function navigation() {
     .join("");
 }
 async function loadWorkspace(initialData) {
+  moduleRequest?.abort();
   calendarView.reset();
   const version = ++generation;
   $("#content").innerHTML = loading();
@@ -372,19 +381,24 @@ function pagination(result) {
 const sampleAcknowledgments = new Set();
 const sectionSymbols = { updates: "📣", homework: "🧩", diary: "📖", gallery: "📸", messages: "💬" };
 const teacherDesk = teacherPortal ? createTeacherWorkspace({ api, esc, go, toast, render, empty, pagination, stamp }) : null;
-const calendarView = createSchoolCalendar({ api, esc, icon, isoDate, parseDay, empty, notify: toast });
+const calendarView = createSchoolCalendar({ esc, icon, isoDate, parseDay, empty, notify: toast });
 const gallery = createGallery({
   api,
-  context: () => ({ student: child(), workspace, epoch, generation, preview: Boolean(preview), classId: teacherClass }),
+  context: () => ({ student: child(), workspace, epoch, generation, preview: Boolean(preview), classId: teacherClass,
+    signal: moduleRequest?.signal }),
   esc,
   icon,
   formatDay,
   toast,
   refresh: loadWorkspace,
 });
-async function render(initialToday) {
+async function render(initialToday, { refreshModule = false } = {}) {
+  moduleRequest?.abort();
   gallery.reset();
   if (!workspace || !user) return;
+  moduleRequest = new AbortController();
+  const { signal } = moduleRequest;
+  const read = (path) => api(path, undefined, "GET", true, "json", {}, signal);
   const r = route(),
     version = ++generation,
     s = child();
@@ -439,7 +453,7 @@ async function render(initialToday) {
       html =
         workspace.classes.length ||
         (!teacherPortal && workspace.students.some((student) => student.can_manage))
-          ? await gallery.screen(null, page)
+          ? await gallery.screen(null, page, read)
           : empty(
               "gallery",
               teacherPortal ? "No classes assigned yet" : "School albums are managed by staff.",
@@ -456,29 +470,34 @@ async function render(initialToday) {
         `<button data-refresh type="button" class="secondary">Check again</button>`,
       );
     } else if (r === "child") {
-      const profile = preview ? s.profile : await api(`/children/${s.id}/profile`);
+      const profile = preview ? s.profile : await read(`/children/${s.id}/profile`);
       html = profileScreen(s, profile);
     } else if (r === "gallery") {
-      html = await gallery.screen(s, page);
+      html = await gallery.screen(s, page, read);
     } else if (r === "messages") {
-      html = await messageScreen(s);
+      html = await messageScreen(s, await read(`/children/${s.id}/messages?page=${page}`));
     } else if (r === "calendar") {
-      const result = await calendarView.screen(s, Boolean(preview), () => version === generation && Boolean(user));
+      const result = await calendarView.screen(s, Boolean(preview), read, () => version === generation && Boolean(user));
       if (version !== generation || !user) return;
       html = result.html;
       calendarExport.disabled = !result.canExport;
     } else if (r === "today") {
       const todayMonth = firstDay();
-      const [feed, calendar] = initialToday?.student_id === s.id && initialToday.month === todayMonth
-        ? [initialToday, initialToday.calendar]
-        : await Promise.all([
-            api(`/children/${s.id}/posts`),
-            api(`/children/${s.id}/calendar?month=${todayMonth}&include_care=true`),
-          ]);
-      html = todayScreen(s, feed, calendar, feed.care || calendar.care);
+      if (initialToday?.student_id === s.id && initialToday.month === todayMonth) {
+        html = todayScreen(s, initialToday, initialToday.calendar, initialToday.care);
+      } else if (preview) {
+        const [feed, calendar] = await Promise.all([
+          read(`/children/${s.id}/posts`),
+          read(`/children/${s.id}/calendar?month=${todayMonth}&include_care=true`),
+        ]);
+        html = todayScreen(s, feed, calendar, feed.care || calendar.care);
+      } else {
+        const today = await read(`/children/${s.id}/today?month=${todayMonth}`);
+        html = todayScreen(s, today, today.calendar, today.care);
+      }
     } else {
       const kind = r === "updates" ? "circulars" : r;
-      const feed = await api(
+      const feed = await read(
         `/children/${s.id}/posts?kind=${kind}&page=${page}`,
       );
       html = renderFamilyFeed({ route: r, feed, student: s, preview: Boolean(preview), acknowledgments: sampleAcknowledgments,
@@ -498,7 +517,9 @@ async function render(initialToday) {
     }
     if (r === "gallery" || r === "school-albums") gallery.mount();
   } catch (error) {
-    if (version === generation && user) showError(error);
+    if (signal.aborted || version !== generation || !user) return;
+    if (refreshModule && error.status === 403) return loadWorkspace();
+    showError(error);
   }
 }
 const profileIcon = (emoji) => `<span aria-hidden="true">${emoji}</span>`;
@@ -737,8 +758,7 @@ function setMessageTopic(form, topic) {
   document.querySelectorAll("[data-message-topic]").forEach(button =>
     button.setAttribute("aria-pressed", String(button.dataset.messageTopic === topic)));
 }
-async function messageScreen(s) {
-  const result = await api(`/children/${s.id}/messages?page=${page}`);
+function messageScreen(s, result) {
   return `<div class="school-conversation">
     ${teacherPortal ? `<div class="toolbar"><strong>${esc(s.full_name)}</strong><span class="spacer"></span>
       <button type="button" data-refresh class="secondary">Refresh</button></div>` : s.is_active ? `<div class="message-topics" role="group" aria-label="Message topic">
@@ -1045,7 +1065,12 @@ document.addEventListener("click", async (event) => {
   if (el.matches("[data-edit]"))
     return openEditor(el.dataset.edit, el.dataset.id);
   if (el.matches("[data-retry]")) return workspace ? render() : loadWorkspace();
-  if (el.matches("[data-refresh]")) return loadWorkspace();
+  if (el.matches("[data-refresh]")) {
+    if (!teacherPortal && !preview && child() && ["updates", "homework", "diary", "gallery"].includes(route())) {
+      return render(undefined, { refreshModule: true });
+    }
+    return loadWorkspace();
+  }
   if (el.matches("[data-page]")) {
     page = Number(el.dataset.page);
     return render();

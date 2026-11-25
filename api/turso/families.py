@@ -66,13 +66,21 @@ def workspace(access, p_today_month=None, p_staff_only=False):
               'parent_accounts': [{**a, 'phone': mobile_from_login(a['email'])} for a in accounts]}
     if p_today_month and students:
         child = next((student for student in students if student['is_active']), students[0])
-        result['today'] = {
-            'student_id': child['id'], 'month': p_today_month,
-            'posts': recent_posts(access, child, limit=3),
-            'calendar': child_calendar(access.db, child, p_today_month),
-            'care': teaching.today(access, child),
-        }
+        result['today'] = today_summary(access, child, p_today_month)
     return result
+
+
+def today_summary(access, child, month, *, post_limit=3):
+    return {
+        'student_id': child['id'], 'month': month,
+        'posts': recent_posts(access, child, limit=post_limit),
+        'calendar': child_calendar(access.db, child, month),
+        'care': teaching.today(access, child),
+    }
+
+
+def today(access, p_student, p_month):
+    return today_summary(access, require_child(access, p_student), p_month, post_limit=20)
 
 
 def child_profile(access, p_student):

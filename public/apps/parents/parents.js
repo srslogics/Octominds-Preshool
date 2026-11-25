@@ -96,6 +96,15 @@ let session = null,
   refreshing = null,
   moduleRequest = null,
   toastTimer;
+const cacheableParentModules = new Set(["updates", "homework", "calendar"]);
+const moduleCacheLifetime = 30_000;
+const moduleCacheLimit = 12;
+let moduleCache = new Map();
+
+function clearModuleCache() {
+  moduleCache = new Map();
+}
+
 const route = () => {
   const fallback = teacherPortal ? "classroom" : "today";
   const r = location.hash.replace(/^#\/?/, "") || fallback;
@@ -148,6 +157,7 @@ function setPasswordVisibility(visible) {
 }
 function clearSession() {
   moduleRequest?.abort();
+  clearModuleCache();
   calendarView.reset();
   sampleAcknowledgments.clear();
   teacherDesk?.reset();
@@ -269,6 +279,7 @@ async function api(
   });
   if (version !== epoch) throw Error("Your session changed.");
   if (response.status === 401 && retry) {
+    clearModuleCache();
     if (session.access_token === token) await refresh();
     if (version !== epoch) throw Error("Your session changed.");
     return api(path, body, method, false, responseType, extraHeaders, signal);
@@ -278,6 +289,7 @@ async function api(
   signal?.throwIfAborted();
   if (version !== epoch) throw Error("Your session changed.");
   if (!response.ok) {
+    if (response.status === 403) clearModuleCache();
     if (response.status === 401 && session.access_token === token) {
       clearSession();
       $("#authMessage").textContent = "Your session expired. Please sign in again.";
@@ -290,8 +302,27 @@ async function api(
     error.status = response.status;
     throw error;
   }
+  if (method !== "GET") clearModuleCache();
   return result;
 }
+
+async function readParentModule(path, signal, refreshModule) {
+  if (isOffline() || !(session?.expires_at * 1000 > Date.now() + 30_000)) {
+    return api(path, undefined, "GET", true, "json", {}, signal);
+  }
+  // Replacing the map keeps an in-flight response from repopulating a cleared cache.
+  const cache = moduleCache;
+  const cached = cache.get(path);
+  if (!refreshModule && cached?.expiresAt > Date.now()) return cached.result;
+  cache.delete(path);
+  const result = await api(path, undefined, "GET", true, "json", {}, signal);
+  if (!signal.aborted && cache === moduleCache) {
+    if (cache.size >= moduleCacheLimit) cache.delete(cache.keys().next().value);
+    cache.set(path, { result, expiresAt: Date.now() + moduleCacheLifetime });
+  }
+  return result;
+}
+
 async function enter() {
   const version = epoch;
   let fresh;
@@ -340,6 +371,7 @@ function navigation() {
 }
 async function loadWorkspace(initialData) {
   moduleRequest?.abort();
+  clearModuleCache();
   calendarView.reset();
   const version = ++generation;
   $("#content").innerHTML = loading();
@@ -398,10 +430,13 @@ async function render(initialToday, { refreshModule = false } = {}) {
   if (!workspace || !user) return;
   moduleRequest = new AbortController();
   const { signal } = moduleRequest;
-  const read = (path) => api(path, undefined, "GET", true, "json", {}, signal);
   const r = route(),
     version = ++generation,
     s = child();
+  const useCache = !teacherPortal && !preview && user.role === "parent" && cacheableParentModules.has(r);
+  const read = (path) => useCache
+    ? readParentModule(path, signal, refreshModule)
+    : api(path, undefined, "GET", true, "json", {}, signal);
   navigation();
   const isProfile = r === "child";
   const isToday = r === "today" && Boolean(s);
@@ -1058,6 +1093,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (el.matches("[data-follow]")) {
+    clearModuleCache();
     selected = el.dataset.follow;
     $("#childSelect").value = selected;
     page = 1;
@@ -1140,6 +1176,7 @@ $("#teacherClass")?.addEventListener("change", (event) => {
   render();
 });
 $("#childSelect").addEventListener("change", (event) => {
+  clearModuleCache();
   calendarView.reset();
   messageDraft = null;
   selected = event.target.value;
@@ -1272,6 +1309,7 @@ window.addEventListener("online", () => {
   restoreWhenOnline = false;
   start();
 });
+window.addEventListener("offline", clearModuleCache);
 if (teacherPortal && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 sessions.protectHistory($("#portal"), () => Boolean(session));
 start();

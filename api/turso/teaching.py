@@ -64,10 +64,14 @@ def today(access, child):
 
 
 def diary(access, child, page):
+    page_size = 20
+    offset = (page - 1) * page_size
     rows = access.db.all('''select school_day,details from student_daily_records where student_id=?
-        order by school_day desc limit 20 offset ?''', (child['id'], (page - 1) * 20))
-    return {'entries': [unpack(row) for row in rows],
-            'total': access.db.scalar('select count(*) from student_daily_records where student_id=?', (child['id'],))}
+        order by school_day desc limit ? offset ?''', (child['id'], page_size, offset))
+    total = offset + len(rows)
+    if len(rows) == page_size or (offset and not rows):
+        total = access.db.scalar('select count(*) from student_daily_records where student_id=?', (child['id'],))
+    return {'entries': [unpack(row) for row in rows], 'total': total}
 
 
 def require_class(access, class_id):

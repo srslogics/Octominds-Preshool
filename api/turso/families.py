@@ -247,18 +247,25 @@ def recent_posts(access, child, kind='all', limit=20, offset=0, *, include_total
                          +clause+' order by p.created_at desc,p.id desc limit ? offset ?', [*args, limit, offset])
     posts = [{**p, 'can_withdraw': can_edit_post(access,p)} for p in rows]
     if include_total:
-        return posts, access.db.scalar('select count(*) from parent_posts p '+clause, args)
+        total = offset + len(rows)
+        if len(rows) == limit or (offset and not rows):
+            total = access.db.scalar('select count(*) from parent_posts p '+clause, args)
+        return posts, total
     return posts
 
 
 def thread(access, p_student, p_page=1):
     require_child(access, p_student)
     db = access.db
+    page_size = 30
+    offset = (p_page - 1) * page_size
     rows = db.all('''select m.id,m.body,m.created_at,p.full_name author_name,m.author_id=? is_own
         from parent_messages m join profiles p on p.id=m.author_id where m.student_id=?
-        order by m.created_at desc,m.id desc limit 30 offset ?''', (access.actor,p_student,(p_page-1)*30))
-    total = db.scalar('select count(*) from parent_messages where student_id=?', (p_student,))
-    return {'messages': rows[::-1], 'total': total, 'page': p_page, 'page_size': 30}
+        order by m.created_at desc,m.id desc limit ? offset ?''', (access.actor, p_student, page_size, offset))
+    total = offset + len(rows)
+    if len(rows) == page_size or (offset and not rows):
+        total = db.scalar('select count(*) from parent_messages where student_id=?', (p_student,))
+    return {'messages': rows[::-1], 'total': total, 'page': p_page, 'page_size': page_size}
 
 
 def send_message(access, p_student, p_body):
@@ -279,11 +286,24 @@ def calendar(access, p_student, p_month, p_include_next_month=False, p_include_c
 
 def child_calendar(db, child, month, include_next_month=False):
     span = '+2 months' if include_next_month else '+1 month'
-    events = db.all("""select id,title,body,event_date from parent_posts where is_published=1
-        and kind='event' and class_id=? and (student_id is null or student_id=?)
-        and event_date>=date(?,'start of month') and event_date<date(?,'start of month',?)
-        order by event_date,id""", (child['class_id'], child['id'], month, month, span))
-    holidays = db.all("""select id,name,starts_on,ends_on from school_holidays where is_active=1 and branch_id=?
-        and ends_on>=date(?,'start of month') and starts_on<date(?,'start of month',?) order by starts_on,id""",
-        (child['branch_id'], month, month, span))
+    entries = db.all("""
+        with period as (select date(?,'start of month') first_day, date(?,'start of month',?) next_day)
+        select 'event' entry_type, id, title, body, event_date starts_on, null ends_on
+        from parent_posts, period where is_published=1
+            and kind='event' and class_id=? and (student_id is null or student_id=?)
+            and event_date>=first_day and event_date<next_day
+        union all
+        select 'holiday', id, name, null, starts_on, ends_on
+        from school_holidays, period where is_active=1 and branch_id=?
+            and ends_on>=first_day and starts_on<next_day
+        order by starts_on,id
+        """, (month, month, span, child['class_id'], child['id'], child['branch_id']))
+    events, holidays = [], []
+    for entry in entries:
+        if entry['entry_type'] == 'event':
+            events.append({'id': entry['id'], 'title': entry['title'], 'body': entry['body'],
+                           'event_date': entry['starts_on']})
+        else:
+            holidays.append({'id': entry['id'], 'name': entry['title'],
+                             'starts_on': entry['starts_on'], 'ends_on': entry['ends_on']})
     return {'events': events, 'holidays': holidays}

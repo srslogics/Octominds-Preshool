@@ -363,7 +363,8 @@ watchdog.unref();
   const A = "00000000-0000-4000-8000-000000000101",
     B = "00000000-0000-4000-8000-000000000102";
   let fail = true,
-    hold = false;
+    hold = false,
+    feedRevision = "";
   await p.addInitScript(() =>
     sessionStorage.setItem(
       "octominds.inventory.session",
@@ -438,7 +439,7 @@ watchdog.unref();
           {
             id: child,
             kind: "notice",
-            title: "Only child " + child,
+            title: (u.searchParams.get("kind") === "homework" ? "Home learning for child " : "Only child ") + child + feedRevision,
             body: "Private child update",
             created_at: new Date().toISOString(),
             author_name: "School",
@@ -460,6 +461,24 @@ watchdog.unref();
   await p.getByRole("button", { name: "Try again" }).click();
   await p.getByRole("heading", { name: "Only child A", exact: true }).waitFor();
   console.log("PASS: outage and retry");
+  const liveNav = p.getByRole("navigation", { name: "Main navigation" });
+  async function openModule(name, contentHeading) {
+    await liveNav.getByRole("link", { name, exact: true }).click();
+    await p.locator("#content").getByRole("heading", { name: contentHeading, exact: true }).waitFor();
+  }
+  await openModule("Home learning", "Home learning for child A");
+  await openModule("Calendar", "No calendar entries");
+  const beforeRevisit = liveReads.length;
+  await openModule("School updates", "Only child A");
+  await openModule("Home learning", "Home learning for child A");
+  await openModule("Calendar", "No calendar entries");
+  assert.equal(liveReads.length, beforeRevisit, "Recent module revisits should use memory");
+  feedRevision = " · refreshed";
+  await p.clock.setFixedTime(new Date(Date.now() + 31_000));
+  await openModule("School updates", "Only child A · refreshed");
+  assert.deepEqual(liveReads.slice(beforeRevisit), [`/api/v1/parents/children/${A}/posts`]);
+  feedRevision = "";
+  console.log("PASS: repeat module visits use memory and expired content is fetched again");
   hold = true;
   const delayed = p.waitForRequest((r) => r.url().includes(A + "/posts"));
   const beforeRefresh = liveReads.length;
@@ -476,6 +495,16 @@ watchdog.unref();
     await p.getByRole("heading", { name: "Only child A", exact: true }).count(),
     0,
   );
+  hold = false;
+  const beforeSwitchBack = liveReads.length;
+  await p.locator("#childSelect").selectOption(A);
+  await p.getByRole("heading", { name: "Only child A", exact: true }).waitFor();
+  await p.locator("#childSelect").selectOption(B);
+  await p.getByRole("heading", { name: "Only child B", exact: true }).waitFor();
+  assert.deepEqual(liveReads.slice(beforeSwitchBack), [
+    `/api/v1/parents/children/${A}/posts`,
+    `/api/v1/parents/children/${B}/posts`,
+  ], "Switching children should clear previously saved module responses");
   await p.getByRole("navigation").getByRole("link", { name: "My child", exact: true }).click();
   await p.getByRole("heading", { name: "Teacher B", exact: true }).waitFor();
   assert.equal(await p.getByText("No known allergies").count(), 0);

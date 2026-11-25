@@ -16,13 +16,15 @@ def invalid(message):
 
 
 class Access:
-    def __init__(self, db, actor):
+    def __init__(self, db, actor, *, verified_memberships=None):
         self.db, self.actor = db, actor
-        self.memberships = db.all("""
-            select m.* from user_memberships m join profiles p on p.id=m.user_id
-            where m.user_id=? and p.is_active=1 and m.is_active=1
-            and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
-            """, (actor,))
+        if verified_memberships is None:
+            verified_memberships = db.all("""
+                select m.* from user_memberships m join profiles p on p.id=m.user_id
+                where m.user_id=? and p.is_active=1 and m.is_active=1
+                and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
+                """, (actor,))
+        self.memberships = verified_memberships
         self.global_roles = {m['role'] for m in self.memberships if m['role'] in GLOBAL}
         self.roles = {}
         for membership in self.memberships:

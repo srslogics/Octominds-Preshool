@@ -90,6 +90,28 @@ class TursoWorkflows(unittest.TestCase):
         self.request('GET',thread,self.parent,code=403)
         self.request('GET',f'/parents/children/{self.child}/today?month=2026-11-01',self.parent,code=403)
 
+    def test_family_pagination_keeps_exact_totals(self):
+        with transaction(self.settings, write=True) as db:
+            for index in range(21):
+                db.insert('parent_posts', {'branch_id': self.center, 'class_id': self.classroom,
+                                           'student_id': self.child, 'kind': 'diary',
+                                           'title': f'Diary {index}', 'body': 'Class activity',
+                                           'created_by': self.teacher_id})
+                db.insert('student_daily_records', {'student_id': self.child,
+                    'school_day': f'2026-11-{index + 1:02d}', 'details': {'attendance': 'present'}, 'updated_at': now()})
+            for index in range(31):
+                db.insert('parent_messages', {'student_id': self.child, 'author_id': self.parent_id,
+                                              'body': f'Message {index}'})
+
+        child_path = f'/parents/children/{self.child}'
+        for page, post_count, message_count in ((1, 20, 30), (2, 1, 1), (3, 0, 0)):
+            with self.subTest(page=page):
+                feed = self.request('GET', f'{child_path}/posts?kind=diary&page={page}', self.parent).json()
+                self.assertEqual((feed['total'], len(feed['posts'])), (21, post_count))
+                self.assertEqual((feed['routine']['total'], len(feed['routine']['entries'])), (21, post_count))
+                thread = self.request('GET', f'{child_path}/messages?page={page}', self.parent).json()
+                self.assertEqual((thread['total'], len(thread['messages'])), (31, message_count))
+
     def test_private_photo_transaction_and_retry(self):
         album=self.request('POST','/parents/albums',self.teacher,{'class_id':self.classroom,'title':'Test Album',
                            'taken_on':'2026-11-23'},code=201).json()['id']
@@ -349,8 +371,11 @@ class TursoWorkflows(unittest.TestCase):
         path = f'/parents/children/{self.child}/calendar?month=2026-11-01'
         self.assertEqual(self.request('GET', path, self.parent).json(), {'events': [], 'holidays': []})
         expanded = self.request('GET', path + '&include_next_month=true', self.parent).json()
-        self.assertEqual([item['id'] for item in expanded['events']], [event['id']])
-        self.assertEqual([item['id'] for item in expanded['holidays']], [holiday['id']])
+        self.assertEqual(expanded['events'], [{field: event[field] for field in ('id', 'title', 'body', 'event_date')}])
+        expected_holiday = {field: holiday[field] for field in ('id', 'name', 'starts_on', 'ends_on')}
+        self.assertEqual(expanded['holidays'], [expected_holiday])
+        january = self.request('GET', path.replace('2026-11-01', '2027-01-01'), self.parent).json()
+        self.assertEqual(january, {'events': [], 'holidays': [expected_holiday]})
         self.request('GET', path + '&include_next_month=true', self.unlinked, code=403)
         self.request('POST', '/parents/posts', self.teacher, {
             'class_id': self.classroom, 'student_id': self.child, 'kind': 'diary',

@@ -1,7 +1,7 @@
 """Server-only adapter for existing school and family API contracts."""
 from contextlib import contextmanager
 
-from ..auth import resolve_account, resolve_current_user
+from ..auth import resolve_account, resolve_user_and_memberships
 from . import families, photos, school
 from .access import Access
 from .db import transaction
@@ -48,8 +48,8 @@ class SchoolRepository:
     @contextmanager
     def parent_read(self):
         with transaction(self.settings) as db:
-            user = resolve_current_user(db, self.token)
-            yield Access(db, user.id), user
+            user, memberships = resolve_user_and_memberships(db, self.token)
+            yield Access(db, user.id, verified_memberships=memberships), user
 
     def request(self, method, path, *, data=None, include_account=False):
         command = path.removeprefix('/rpc/')

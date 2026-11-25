@@ -110,12 +110,13 @@ def get_current_user(credentials: Credentials, settings: Annotated[Settings, Dep
     if not credentials:
         raise HTTPException(401, 'Authentication required')
     with transaction(settings) as db:
-        return resolve_current_user(db, credentials.credentials)
+        user, _ = resolve_user_and_memberships(db, credentials.credentials)
+        return user
 
 
-def resolve_current_user(db, token):
+def resolve_user_and_memberships(db, token):
     rows = db.all(f"""
-        select p.id,p.full_name,p.phone,a.email,m.role,m.branch_id,m.expires_at,b.name branch_name
+        select p.id account_id,p.full_name,p.phone,a.email,b.name branch_name,m.*
         {SESSION_ACCOUNT}
         left join user_memberships m on m.user_id=p.id and m.is_active=1
             and (m.expires_at is null or julianday(m.expires_at)>julianday('now'))
@@ -133,5 +134,6 @@ def resolve_current_user(db, token):
     branch = next(iter(scopes)) if '*' not in scopes and len(scopes) == 1 else None
     account = rows[0]
     branch_name = next((row['branch_name'] for row in rows if row['branch_id'] == branch), None) if branch else None
-    return CurrentUser(account['id'], account['email'], account['phone'], role, branch,
+    user = CurrentUser(account['account_id'], account['email'], account['phone'], role, branch,
                        account['full_name'], branch_name, scopes)
+    return user, [row for row in rows if row['role']]

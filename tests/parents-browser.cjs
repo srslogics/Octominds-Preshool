@@ -365,6 +365,9 @@ watchdog.unref();
   let fail = true,
     hold = false,
     feedRevision = "";
+  let releaseWorkspace, releaseModule;
+  const workspaceReady = new Promise(resolve => { releaseWorkspace = resolve; });
+  const moduleReady = new Promise(resolve => { releaseModule = resolve; });
   await p.addInitScript(() =>
     sessionStorage.setItem(
       "octominds.inventory.session",
@@ -388,7 +391,8 @@ watchdog.unref();
     const u = new URL(r.request().url());
     if (u.pathname.startsWith("/api/v1/auth/")) return r.fallback();
     liveReads.push(u.pathname);
-    if (u.pathname.endsWith("/workspace"))
+    if (u.pathname.endsWith("/workspace")) {
+      await workspaceReady;
       return r.fulfill({
         json: {
           account: { id: "parent", full_name: "Test Parent", role: "parent" },
@@ -415,11 +419,14 @@ watchdog.unref();
           parent_accounts: [],
         },
       });
-    if (fail)
+    }
+    if (fail) {
+      await moduleReady;
       return r.fulfill({
         status: 503,
         json: { detail: "School is temporarily unavailable" },
       });
+    }
     const child = u.pathname.includes(A) ? "A" : "B";
     if (u.pathname.endsWith("/today"))
       return r.fulfill({
@@ -452,9 +459,25 @@ watchdog.unref();
     });
   });
   await p.goto(origin + "/parents#/updates");
+  const authLoader = p.locator("#authMessage.auth-loading");
+  await authLoader.waitFor();
+  assert.equal(await authLoader.textContent(), "Checking your saved session…");
+  const animationName = (locator) => locator.evaluate(el => getComputedStyle(el, "::before").animationName);
+  assert.equal(await animationName(authLoader), "octopus-dance");
+  releaseWorkspace();
+  const moduleLoader = p.locator("#content .loading--octopus");
+  await moduleLoader.waitFor();
+  assert.equal(await moduleLoader.textContent(), "Bringing you up to date…");
+  assert.equal(await animationName(moduleLoader), "octopus-dance");
+  await p.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal(await animationName(moduleLoader), "none");
+  if (screenshotDir) await moduleLoader.screenshot({ path: path.join(screenshotDir, "parents-octopus-loading.png") });
+  await p.emulateMedia({ reducedMotion: "no-preference" });
+  releaseModule();
   await p
     .getByRole("heading", { name: "We couldn’t load this just now." })
     .waitFor();
+  await moduleLoader.waitFor({ state: "hidden" });
   assert.equal(await p.getByText("Aarohi Sharma").count(), 0);
   assert.equal(await p.locator("#previewBanner").isVisible(), false);
   fail = false;

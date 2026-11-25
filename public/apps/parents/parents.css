@@ -953,6 +953,39 @@ dialog::backdrop {
     transform: rotate(360deg);
   }
 }
+.loading--octopus {
+  flex-direction: column;
+  gap: 12px;
+  padding-block: 34px;
+  font-weight: 700;
+}
+#authMessage.auth-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.loading--octopus::before,
+.auth-loading::before {
+  --octopus-size: 96px;
+  content: "";
+  flex: none;
+  width: var(--octopus-size);
+  height: var(--octopus-size);
+  border: 0;
+  border-radius: 16%;
+  background: #fff url("/assets/octominds-icon-192.png") no-repeat center 18%;
+  background-size: 187.5% auto;
+  animation: octopus-dance 1.2s ease-in-out 4;
+}
+.auth-loading::before {
+  --octopus-size: 42px;
+}
+@keyframes octopus-dance {
+  0%, 50%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-9%) rotate(-10deg); }
+  75% { transform: translateY(-9%) rotate(10deg); }
+}
 @media (max-width: 1100px) {
   .app-layout { grid-template-columns: 190px minmax(0, 1fr); }
   .sidebar { padding-inline: 12px; }
@@ -1052,6 +1085,10 @@ dialog::backdrop {
   * {
     animation: none !important;
     scroll-behavior: auto !important;
+  }
+  .loading--octopus::before,
+  .auth-loading::before {
+    animation: none;
   }
 }
 

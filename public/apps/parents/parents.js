@@ -142,7 +142,12 @@ const isOffline = () => !navigator.onLine || document.body.hasAttribute("data-of
 const empty = (name, title, text, action = "") =>
   `<div class="empty">${icon(name)}<h2>${esc(title)}</h2><p>${esc(text)}</p>${action}</div>`;
 const loading = () =>
-  '<div class="loading" role="status">Bringing you up to date…</div>';
+  `<div class="loading${teacherPortal ? "" : " loading--octopus"}" role="status">Bringing you up to date…</div>`;
+function showAuthProgress(text) {
+  const status = $("#authMessage");
+  status.classList.toggle("auth-loading", !teacherPortal);
+  status.textContent = text;
+}
 function toast(text) {
   clearTimeout(toastTimer);
   $("#toast").textContent = text;
@@ -157,6 +162,7 @@ function setPasswordVisibility(visible) {
 }
 function clearSession() {
   moduleRequest?.abort();
+  $("#authMessage").classList.remove("auth-loading");
   clearModuleCache();
   calendarView.reset();
   sampleAcknowledgments.clear();
@@ -1206,7 +1212,7 @@ $("#loginForm").addEventListener("submit", async (event) => {
     version = ++epoch,
     remember = $("#remember").checked;
   button.disabled = true;
-  $("#authMessage").textContent = "Signing in…";
+  showAuthProgress("Signing in…");
   try {
     if (isOffline()) throw Error("Reconnect to sign in.");
     let identity = $("#identity").value.trim();
@@ -1232,6 +1238,7 @@ $("#loginForm").addEventListener("submit", async (event) => {
   } catch (error) {
     if (version === epoch) $("#authMessage").textContent = error.message;
   } finally {
+    if (version === epoch) $("#authMessage").classList.remove("auth-loading");
     button.disabled = false;
   }
 });
@@ -1291,7 +1298,7 @@ async function start() {
       return;
     }
     form.hidden = true;
-    $("#authMessage").textContent = "Checking your saved session…";
+    showAuthProgress("Checking your saved session…");
     await enter();
     if (version === epoch) $("#authMessage").textContent = "";
   } catch (error) {
@@ -1300,6 +1307,7 @@ async function start() {
       $("#authMessage").textContent = restoreWhenOnline ? "" : error.message;
     }
   } finally {
+    if (version === epoch) $("#authMessage").classList.remove("auth-loading");
     form.hidden = false;
     if (previewRequested) $("#loginForm button[type=submit]").disabled = false;
   }
